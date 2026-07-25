@@ -67,7 +67,14 @@ export default function AccountPage() {
             </div>
             <div>
               <h1 className="font-display text-2xl font-bold">{company.name}</h1>
-              <p className="text-sm text-text-secondary">{company.contactName} &middot; {company.email}</p>
+              <p className="text-sm text-text-secondary">
+                {company.contactName} &middot; {company.email}
+                {/* Registration number is administrative metadata, not
+                    something a returning buyer needs every visit — a small
+                    caption here beats giving it an equal-weight stat slot
+                    next to the outstanding balance below. */}
+                {company.taxId && <> &middot; Reg. {company.taxId}</>}
+              </p>
             </div>
           </div>
           <Button variant="outline" size="sm" onClick={handleLogout}>
@@ -93,25 +100,32 @@ export default function AccountPage() {
         </Animate>
       )}
 
+      {/* Same treatment as /account/invoices' summary card (text-3xl hero
+          number, card-wide red tint when overdue) — a buyer bouncing between
+          the two pages should see the same number carry the same weight,
+          not a smaller demoted version here. */}
       <Animate variant="fadeUp" delay={0.05}>
-        <div className="bg-surface rounded-xl border border-border p-5 sm:p-6 mb-6 grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div>
-            <p className="text-xs font-medium uppercase tracking-wider text-text-muted mb-1">Outstanding</p>
-            <p className={cn('font-display font-semibold text-lg tabular-nums', balance && balance.overdue > 0 && 'text-danger')}>
-              {balance ? formatPrice(balance.outstanding) : '—'}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs font-medium uppercase tracking-wider text-text-muted mb-1">Credit Terms</p>
-            <p className="font-display font-semibold text-lg">{CREDIT_TERMS_LABELS[company.creditTerms] ?? company.creditTerms}</p>
-          </div>
-          <div>
-            <p className="text-xs font-medium uppercase tracking-wider text-text-muted mb-1">Business Registration</p>
-            <p className="font-display font-semibold text-lg">{company.taxId || '—'}</p>
-          </div>
-          <div>
-            <p className="text-xs font-medium uppercase tracking-wider text-text-muted mb-1">Customer Since</p>
-            <p className="font-display font-semibold text-lg">{formatDate(company.createdAt).split(',')[0]}</p>
+        <div
+          className={cn(
+            'rounded-xl border p-5 sm:p-6 mb-6',
+            balance && balance.overdue > 0 ? 'bg-red-50 border-red-200' : 'bg-surface border-border'
+          )}
+        >
+          <div className="grid sm:grid-cols-3 gap-5">
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wider text-text-muted mb-1">Outstanding Balance</p>
+              <p className={cn('font-display text-3xl font-bold tabular-nums', balance && balance.overdue > 0 && 'text-danger')}>
+                {balance ? formatPrice(balance.outstanding) : '—'}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wider text-text-muted mb-1">Credit Terms</p>
+              <p className="font-display font-semibold text-lg mt-1.5">{CREDIT_TERMS_LABELS[company.creditTerms] ?? company.creditTerms}</p>
+            </div>
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wider text-text-muted mb-1">Customer Since</p>
+              <p className="font-display font-semibold text-lg mt-1.5">{formatDate(company.createdAt).split(',')[0]}</p>
+            </div>
           </div>
         </div>
       </Animate>
@@ -125,7 +139,7 @@ export default function AccountPage() {
               href={href}
               className="bg-surface rounded-xl border border-border p-5 hover:border-border-hover hover:shadow-sm transition-all group flex flex-col"
             >
-              <div className="w-10 h-10 rounded-lg bg-surface-elevated flex items-center justify-center mb-3 group-hover:bg-primary group-hover:text-white transition-colors">
+              <div className="w-10 h-10 rounded-lg bg-primary text-white flex items-center justify-center mb-3">
                 <Icon className="w-5 h-5" />
               </div>
               <p className="font-display font-semibold mb-1">{label}</p>

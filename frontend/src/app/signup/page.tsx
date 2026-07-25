@@ -3,12 +3,14 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Building2 } from 'lucide-react';
+import Image from 'next/image';
+import { Building2, Hash, User, Phone, Mail, Lock } from 'lucide-react';
 import { companySignup } from '@/lib/api';
 import { useCompanyAuth } from '@/hooks/useCompanyAuth';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Animate } from '@/components/ui/Animate';
+import { MolecularNetwork } from '@/components/ui/MolecularNetwork';
 
 const FIELD_ORDER = ['name', 'contactName', 'phone', 'email', 'password'] as const;
 
@@ -84,34 +86,52 @@ export default function SignupPage() {
   };
 
   return (
-    <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center bg-background px-4 py-12">
-      <Animate variant="fadeUp" duration={0.5} className="w-full max-w-md">
-        <div className="text-center mb-8">
-          <div className="w-12 h-12 rounded-xl bg-primary text-white flex items-center justify-center mx-auto mb-4">
-            <Building2 className="w-6 h-6" />
-          </div>
-          <h1 className="font-display text-2xl font-bold">Create a Business Account</h1>
-          <p className="text-sm text-text-secondary mt-1">Sign up to see bulk pricing and place orders on trade terms.</p>
-        </div>
+    // Same dark-hero identity as /login and /admin/login — a new trade
+    // account is the start of the relationship, not a lesser gateway than
+    // the internal admin login.
+    <div className="min-h-[calc(100vh-4rem)] bg-primary relative overflow-hidden flex items-center justify-center px-4 py-12">
+      <MolecularNetwork className="absolute inset-0 w-full h-full" />
 
-        <form onSubmit={handleSubmit} noValidate className="bg-surface rounded-xl border border-border p-6 space-y-4">
-          <Input label="Company Name" id="name" value={form.name} onChange={(e) => updateField('name', e.target.value)} error={fieldErrors.name} required />
-          <Input label="Business Registration No. (optional)" id="taxId" value={form.taxId} onChange={(e) => updateField('taxId', e.target.value)} error={fieldErrors.taxId} />
-          <div className="grid sm:grid-cols-2 gap-4">
-            <Input label="Contact Name" id="contactName" value={form.contactName} onChange={(e) => updateField('contactName', e.target.value)} error={fieldErrors.contactName} required />
-            <Input label="Phone Number" id="phone" type="tel" value={form.phone} onChange={(e) => updateField('phone', e.target.value)} placeholder="012-3456789" error={fieldErrors.phone} required />
+      <div className="relative z-10 w-full max-w-md">
+        <Animate variant="fade" duration={0.7}>
+          <div className="flex flex-col items-center gap-3 mb-8">
+            <Image src="/images/pill-icon.png" alt="" width={40} height={40} className="invert" />
+            <div className="text-center">
+              <h1 className="font-display text-2xl font-bold text-white tracking-tight">ASCEND</h1>
+              <p className="text-sm text-white/50 mt-0.5">Business Account</p>
+            </div>
           </div>
-          <Input label="Email" id="email" type="email" value={form.email} onChange={(e) => updateField('email', e.target.value)} error={fieldErrors.email} required />
-          <Input label="Password" id="password" type="password" value={form.password} onChange={(e) => updateField('password', e.target.value)} error={fieldErrors.password} required />
-          {error && <p className="text-sm text-danger bg-red-50 border border-red-200 rounded-lg px-4 py-2.5">{error}</p>}
-          <Button type="submit" className="w-full" size="lg" disabled={loading}>
-            {loading ? 'Creating Account...' : 'Create Account'}
-          </Button>
-          <p className="text-sm text-text-secondary text-center">
-            Already have an account? <Link href="/login" className="text-text-primary font-medium hover:underline">Sign in</Link>
-          </p>
-        </form>
-      </Animate>
+        </Animate>
+
+        <Animate variant="fadeUp" delay={0.15} duration={0.6}>
+          <form onSubmit={handleSubmit} noValidate className="bg-white/95 backdrop-blur-sm rounded-2xl border border-white/10 shadow-2xl p-6 sm:p-8 space-y-5">
+            <div className="text-center">
+              <h2 className="font-display text-lg font-bold text-text-primary">Create a Business Account</h2>
+              <p className="text-sm text-text-muted mt-1">Sign up to see bulk pricing and place orders on trade terms.</p>
+            </div>
+
+            <div className="space-y-4">
+              <Input icon={Building2} label="Company Name" id="name" value={form.name} onChange={(e) => updateField('name', e.target.value)} error={fieldErrors.name} required />
+              <Input icon={Hash} label="Business Registration No. (optional)" id="taxId" value={form.taxId} onChange={(e) => updateField('taxId', e.target.value)} error={fieldErrors.taxId} />
+              <div className="grid sm:grid-cols-2 gap-4">
+                <Input icon={User} label="Contact Name" id="contactName" value={form.contactName} onChange={(e) => updateField('contactName', e.target.value)} error={fieldErrors.contactName} required />
+                <Input icon={Phone} label="Phone Number" id="phone" type="tel" value={form.phone} onChange={(e) => updateField('phone', e.target.value)} placeholder="012-3456789" error={fieldErrors.phone} required />
+              </div>
+              <Input icon={Mail} label="Email" id="email" type="email" value={form.email} onChange={(e) => updateField('email', e.target.value)} error={fieldErrors.email} autoComplete="username" required />
+              <Input icon={Lock} label="Password" id="password" type="password" value={form.password} onChange={(e) => updateField('password', e.target.value)} error={fieldErrors.password} autoComplete="new-password" required />
+            </div>
+
+            {error && <p className="text-sm text-danger text-center">{error}</p>}
+
+            <Button type="submit" className="w-full" size="lg" disabled={loading}>
+              {loading ? 'Creating Account...' : 'Create Account'}
+            </Button>
+            <p className="text-sm text-text-muted text-center">
+              Already have an account? <Link href="/login" className="text-text-primary font-medium hover:underline">Sign in</Link>
+            </p>
+          </form>
+        </Animate>
+      </div>
     </div>
   );
 }
