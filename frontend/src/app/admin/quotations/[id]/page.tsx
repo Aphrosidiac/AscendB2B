@@ -3,10 +3,11 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Download } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import {
   adminGetQuotation,
+  adminOpenQuotationPdf,
   adminUpdateQuotation,
   adminSendQuotation,
   adminSetQuotationStatus,
@@ -198,7 +199,16 @@ export default function AdminQuotationDetailPage() {
           <h1 className="font-display text-2xl sm:text-3xl font-bold">{quotation.quoteNumber}</h1>
           <p className="text-sm text-text-muted mt-1">{quotation.company?.name} &middot; {quotation.company?.email}</p>
         </div>
-        <Badge className={QUOTATION_STATUS_COLORS[quotation.status]}>{QUOTATION_STATUS_LABELS[quotation.status]}</Badge>
+        <div className="flex items-center gap-3">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => token && adminOpenQuotationPdf(token, quotation.id)}
+          >
+            <Download className="w-4 h-4 mr-1.5" /> Download PDF
+          </Button>
+          <Badge className={QUOTATION_STATUS_COLORS[quotation.status]}>{QUOTATION_STATUS_LABELS[quotation.status]}</Badge>
+        </div>
       </div>
 
       <div className="bg-surface rounded-xl border border-border p-5 sm:p-6 mb-4">

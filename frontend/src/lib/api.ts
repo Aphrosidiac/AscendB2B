@@ -311,6 +311,19 @@ export const requestQuotation = (token: string, data: {
   items: { variantId?: string; kitId?: string; quantity: number }[];
 }) => api.post<Quotation>('/api/v1/quotations', data, authHeader(token)).then((r) => r.data);
 
+// Same blob-download pattern as companyOpenReceiptPdf — the quotation is the
+// document a buyer actually circulates internally for approval, so it needs
+// to leave the app as a file rather than only existing as a web page.
+export const companyOpenQuotationPdf = (token: string, quotationId: string) =>
+  api.get<Blob>(`/api/v1/quotations/${quotationId}/pdf`, {
+    ...authHeader(token),
+    responseType: 'blob',
+  }).then((r) => {
+    const url = URL.createObjectURL(r.data);
+    window.open(url, '_blank', 'noopener,noreferrer');
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  });
+
 export const listCompanyQuotations = (token: string, params?: Record<string, string>) =>
   api.get<PaginatedResponse<Quotation>>('/api/v1/quotations', { ...authHeader(token), params }).then((r) => r.data);
 
@@ -462,6 +475,16 @@ export const adminListQuotations = (token: string, params?: Record<string, strin
 
 export const adminGetQuotation = (token: string, id: string) =>
   api.get<Quotation>(`/api/v1/admin/quotations/${id}`, authHeader(token)).then((r) => r.data);
+
+export const adminOpenQuotationPdf = (token: string, id: string) =>
+  api.get<Blob>(`/api/v1/admin/quotations/${id}/pdf`, {
+    ...authHeader(token),
+    responseType: 'blob',
+  }).then((r) => {
+    const url = URL.createObjectURL(r.data);
+    window.open(url, '_blank', 'noopener,noreferrer');
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  });
 
 export const adminUpdateQuotation = (token: string, id: string, data: Record<string, unknown>) =>
   api.patch<Quotation>(`/api/v1/admin/quotations/${id}`, data, authHeader(token)).then((r) => r.data);

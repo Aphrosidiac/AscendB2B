@@ -311,7 +311,10 @@ export async function generateReceiptPdf(
     }
 
     // === Footer ===
-    const footerY = doc.page.height - 70;
+    // -84, not -70: the second footer line sits at +22, and A4's 50pt bottom
+    // margin cuts off at height-50 — at -70 that last line overflows and
+    // PDFKit silently appends a blank page to hold it.
+    const footerY = doc.page.height - 84;
     doc
       .moveTo(leftX, footerY)
       .lineTo(rightX, footerY)

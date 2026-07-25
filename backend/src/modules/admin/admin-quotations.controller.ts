@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { getPaginationParams, paginatedResponse } from '../../utils/pagination.js';
 import { finalizeAcceptQuotation } from '../quotations/quotations.controller.js';
+import { generateQuotationPdf } from '../../utils/quotation-pdf.js';
 
 export async function adminListQuotations(fastify: FastifyInstance, query: Record<string, string>) {
   const { page, limit, skip } = getPaginationParams(query);
@@ -23,10 +24,21 @@ export async function adminListQuotations(fastify: FastifyInstance, query: Recor
   return paginatedResponse(quotations, total, page, limit);
 }
 
+// Mirrors the company-side QUOTATION_ITEM_INCLUDE — without the variant/kit
+// relations the admin UI has only a bare variantId to render, which showed
+// up as a generic "Item" row on the quotation detail page.
 async function requireQuotation(fastify: FastifyInstance, id: string) {
   const quotation = await fastify.prisma.quotation.findUnique({
     where: { id },
-    include: { items: true, company: { select: { id: true, name: true, email: true } } },
+    include: {
+      items: {
+        include: {
+          variant: { select: { code: true, size: true, imageUrl: true, product: { select: { name: true } } } },
+          kit: { select: { name: true } },
+        },
+      },
+      company: { select: { id: true, name: true, contactName: true, phone: true, email: true } },
+    },
   });
   if (!quotation) throw { statusCode: 404, message: 'Quotation not found' };
   return quotation;
@@ -34,6 +46,14 @@ async function requireQuotation(fastify: FastifyInstance, id: string) {
 
 export async function adminGetQuotation(fastify: FastifyInstance, id: string) {
   return requireQuotation(fastify, id);
+}
+
+export async function adminGetQuotationPdf(fastify: FastifyInstance, id: string) {
+  const quotation = await requireQuotation(fastify, id);
+  const settingsRows = await fastify.prisma.setting.findMany();
+  const settings = Object.fromEntries(settingsRows.map((s) => [s.key, s.value]));
+  const pdf = await generateQuotationPdf(quotation, settings);
+  return { quotation, pdf };
 }
 
 const quotationItemSchema = z.object({

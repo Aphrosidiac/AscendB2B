@@ -3,9 +3,9 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, MapPin, CheckCircle, XCircle } from 'lucide-react';
+import { ArrowLeft, MapPin, CheckCircle, XCircle, Download } from 'lucide-react';
 import { useCompanyAuth } from '@/hooks/useCompanyAuth';
-import { getCompanyQuotation, acceptCompanyQuotation, rejectCompanyQuotation, companyListAddresses } from '@/lib/api';
+import { getCompanyQuotation, acceptCompanyQuotation, rejectCompanyQuotation, companyListAddresses, companyOpenQuotationPdf } from '@/lib/api';
 import { formatPrice, formatDate, cn } from '@/lib/utils';
 import { QUOTATION_STATUS_LABELS, QUOTATION_STATUS_COLORS } from '@/lib/constants';
 import { Badge } from '@/components/ui/Badge';
@@ -132,9 +132,18 @@ export default function QuotationDetailPage() {
             <h1 className="font-display text-2xl sm:text-3xl font-bold">{quotation.quoteNumber}</h1>
             <p className="text-sm text-text-muted mt-1">Requested {formatDate(quotation.createdAt)}</p>
           </div>
-          <Badge className={QUOTATION_STATUS_COLORS[quotation.status]}>
-            {QUOTATION_STATUS_LABELS[quotation.status] ?? quotation.status}
-          </Badge>
+          <div className="flex items-center gap-3">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => token && companyOpenQuotationPdf(token, quotation.id)}
+            >
+              <Download className="w-4 h-4 mr-1.5" /> Download PDF
+            </Button>
+            <Badge className={QUOTATION_STATUS_COLORS[quotation.status]}>
+              {QUOTATION_STATUS_LABELS[quotation.status] ?? quotation.status}
+            </Badge>
+          </div>
         </div>
         <p className="text-sm text-text-secondary mb-6">
           {quotation.status === 'EXPIRED' ? 'Expired' : 'Valid until'} {formatDate(quotation.validUntil)}

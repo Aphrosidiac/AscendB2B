@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import {
   adminListQuotations,
   adminGetQuotation,
+  adminGetQuotationPdf,
   adminUpdateQuotation,
   adminSendQuotation,
   adminSetQuotationStatus,
@@ -16,6 +17,15 @@ export default async function adminQuotationRoutes(fastify: FastifyInstance) {
 
   fastify.get<{ Params: { id: string } }>('/:id', async (request) => {
     return adminGetQuotation(fastify, request.params.id);
+  });
+
+  fastify.get<{ Params: { id: string } }>('/:id/pdf', async (request, reply) => {
+    const { quotation, pdf } = await adminGetQuotationPdf(fastify, request.params.id);
+    const safeFilename = quotation.quoteNumber.replace(/[^a-zA-Z0-9\-_\/]/g, '').replace(/\//g, '-');
+    reply.header('Content-Type', 'application/pdf');
+    reply.header('Content-Disposition', `inline; filename="ASCEND-Quotation-${safeFilename}.pdf"`);
+    reply.header('Referrer-Policy', 'no-referrer');
+    return reply.send(pdf);
   });
 
   fastify.patch<{ Params: { id: string } }>('/:id', async (request) => {

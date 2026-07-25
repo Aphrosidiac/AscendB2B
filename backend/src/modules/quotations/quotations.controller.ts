@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { getPaginationParams, paginatedResponse } from '../../utils/pagination.js';
 import { generateQuoteNumber } from '../../utils/quote-number.js';
 import { generateOrderNumber } from '../../utils/order-number.js';
+import { generateQuotationPdf } from '../../utils/quotation-pdf.js';
 
 const quotationItemInputSchema = z.object({
   variantId: z.string().optional(),
@@ -140,6 +141,23 @@ async function requireOwnQuotation(fastify: FastifyInstance, companyId: string, 
 
 export async function getMyQuotation(fastify: FastifyInstance, companyId: string, id: string) {
   return requireOwnQuotation(fastify, companyId, id);
+}
+
+export async function getMyQuotationPdf(fastify: FastifyInstance, companyId: string, id: string) {
+  const quotation = await fastify.prisma.quotation.findUnique({
+    where: { id },
+    include: {
+      ...QUOTATION_ITEM_INCLUDE,
+      company: { select: { name: true, contactName: true, phone: true, email: true } },
+    },
+  });
+  if (!quotation || quotation.companyId !== companyId) {
+    throw { statusCode: 404, message: 'Quotation not found' };
+  }
+  const settingsRows = await fastify.prisma.setting.findMany();
+  const settings = Object.fromEntries(settingsRows.map((s) => [s.key, s.value]));
+  const pdf = await generateQuotationPdf(quotation, settings);
+  return { quotation, pdf };
 }
 
 const acceptQuotationSchema = z.object({
