@@ -8,7 +8,7 @@ import { useCompanyAuth } from '@/hooks/useCompanyAuth';
 import { listCompanyInvoices } from '@/lib/api';
 import { summariseInvoices } from '@/lib/invoices';
 import { Animate, Stagger } from '@/components/ui/Animate';
-import { Button } from '@/components/ui/Button';
+import { MolecularNetwork } from '@/components/ui/MolecularNetwork';
 import { formatDate, formatPrice, cn } from '@/lib/utils';
 
 const CREDIT_TERMS_LABELS: Record<string, string> = {
@@ -57,83 +57,86 @@ export default function AccountPage() {
     router.push('/');
   };
 
+  const overdue = !!(balance && balance.overdue > 0);
+
   return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <Animate variant="fadeUp" duration={0.5}>
-        <div className="flex items-start justify-between gap-4 mb-8">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-xl bg-primary text-white flex items-center justify-center shrink-0">
-              <Building2 className="w-6 h-6" />
+    <div>
+      {/* Full-bleed dark hero — same identity as /login, /signup, and the
+          homepage. Every other gateway page on the site commits to this
+          treatment; this page previously didn't, which is why it read as a
+          generic admin template rather than part of ASCEND. The outstanding
+          balance lives here as the actual headline, since "what do I owe"
+          is the reason a credit-terms buyer opens this page. */}
+      <div className="relative overflow-hidden bg-primary">
+        <MolecularNetwork className="absolute inset-0 w-full h-full" />
+        <div className="relative max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-12">
+          <Animate variant="fadeUp" duration={0.5}>
+            <div className="flex items-start justify-between gap-4 mb-8">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-xl bg-white/10 border border-white/15 backdrop-blur-sm text-white flex items-center justify-center shrink-0">
+                  <Building2 className="w-6 h-6" />
+                </div>
+                <div>
+                  <h1 className="font-display text-2xl font-bold text-white">{company.name}</h1>
+                  <p className="text-sm text-white/60">
+                    {company.contactName} &middot; {company.email}
+                    {company.taxId && <> &middot; Reg. {company.taxId}</>}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={handleLogout}
+                className="inline-flex items-center gap-2 rounded-lg border border-white/15 bg-white/10 backdrop-blur-sm px-3 py-1.5 text-sm font-medium text-white hover:bg-white/20 transition-colors cursor-pointer shrink-0"
+              >
+                <LogOut className="w-3.5 h-3.5" /> Sign Out
+              </button>
             </div>
-            <div>
-              <h1 className="font-display text-2xl font-bold">{company.name}</h1>
-              <p className="text-sm text-text-secondary">
-                {company.contactName} &middot; {company.email}
-                {/* Registration number is administrative metadata, not
-                    something a returning buyer needs every visit — a small
-                    caption here beats giving it an equal-weight stat slot
-                    next to the outstanding balance below. */}
-                {company.taxId && <> &middot; Reg. {company.taxId}</>}
-              </p>
+          </Animate>
+
+          <Animate variant="fadeUp" delay={0.08}>
+            <div className="grid sm:grid-cols-3 gap-6 sm:gap-10 items-end">
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wider text-white/50 mb-1">Outstanding Balance</p>
+                <p className={cn('font-display text-4xl font-bold tabular-nums text-white', overdue && 'text-red-400')}>
+                  {balance ? formatPrice(balance.outstanding) : '—'}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wider text-white/50 mb-1">Credit Terms</p>
+                <p className="font-display font-semibold text-lg text-white/90">{CREDIT_TERMS_LABELS[company.creditTerms] ?? company.creditTerms}</p>
+              </div>
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wider text-white/50 mb-1">Customer Since</p>
+                <p className="font-display font-semibold text-lg text-white/90">{formatDate(company.createdAt).split(',')[0]}</p>
+              </div>
             </div>
-          </div>
-          <Button variant="outline" size="sm" onClick={handleLogout}>
-            <LogOut className="w-3.5 h-3.5" /> Sign Out
-          </Button>
+          </Animate>
         </div>
-      </Animate>
+      </div>
 
-      {balance && balance.overdue > 0 && (
-        <Animate variant="fadeUp" delay={0.03} className="mb-6">
-          <Link
-            href="/account/invoices"
-            className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3.5 text-danger hover:border-red-300 transition-colors"
-          >
-            <TriangleAlert className="w-5 h-5 shrink-0 mt-0.5" />
-            <div>
-              <p className="font-display font-semibold text-sm">
-                {formatPrice(balance.overdue)} overdue across {balance.overdueCount} invoice{balance.overdueCount === 1 ? '' : 's'}
-              </p>
-              <p className="text-sm opacity-90 mt-0.5">Review your invoices and settle the outstanding balance.</p>
-            </div>
-          </Link>
-        </Animate>
-      )}
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {overdue && (
+          <Animate variant="fadeUp" delay={0.03} className="mb-6">
+            <Link
+              href="/account/invoices"
+              className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3.5 text-danger hover:border-red-300 transition-colors"
+            >
+              <TriangleAlert className="w-5 h-5 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-display font-semibold text-sm">
+                  {formatPrice(balance!.overdue)} overdue across {balance!.overdueCount} invoice{balance!.overdueCount === 1 ? '' : 's'}
+                </p>
+                <p className="text-sm opacity-90 mt-0.5">Review your invoices and settle the outstanding balance.</p>
+              </div>
+            </Link>
+          </Animate>
+        )}
 
-      {/* Same treatment as /account/invoices' summary card (text-3xl hero
-          number, card-wide red tint when overdue) — a buyer bouncing between
-          the two pages should see the same number carry the same weight,
-          not a smaller demoted version here. */}
-      <Animate variant="fadeUp" delay={0.05}>
-        <div
-          className={cn(
-            'rounded-xl border p-5 sm:p-6 mb-6',
-            balance && balance.overdue > 0 ? 'bg-red-50 border-red-200' : 'bg-surface border-border'
-          )}
-        >
-          <div className="grid sm:grid-cols-3 gap-5">
-            <div>
-              <p className="text-xs font-medium uppercase tracking-wider text-text-muted mb-1">Outstanding Balance</p>
-              <p className={cn('font-display text-3xl font-bold tabular-nums', balance && balance.overdue > 0 && 'text-danger')}>
-                {balance ? formatPrice(balance.outstanding) : '—'}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs font-medium uppercase tracking-wider text-text-muted mb-1">Credit Terms</p>
-              <p className="font-display font-semibold text-lg mt-1.5">{CREDIT_TERMS_LABELS[company.creditTerms] ?? company.creditTerms}</p>
-            </div>
-            <div>
-              <p className="text-xs font-medium uppercase tracking-wider text-text-muted mb-1">Customer Since</p>
-              <p className="font-display font-semibold text-lg mt-1.5">{formatDate(company.createdAt).split(',')[0]}</p>
-            </div>
-          </div>
-        </div>
-      </Animate>
-
-      <Stagger className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4" stagger={0.06}>
-        {QUICK_LINKS.map(({ href, label, description, icon: Icon }) => {
-          const isInvoices = href === '/account/invoices';
-          return (
+        {/* Uniform cards now that the balance has its own home in the hero
+            above — no more one card growing an extra line and throwing off
+            the grid's row height. */}
+        <Stagger className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4" stagger={0.06}>
+          {QUICK_LINKS.map(({ href, label, description, icon: Icon }) => (
             <Link
               key={href}
               href={href}
@@ -144,20 +147,10 @@ export default function AccountPage() {
               </div>
               <p className="font-display font-semibold mb-1">{label}</p>
               <p className="text-sm text-text-secondary">{description}</p>
-              {isInvoices && balance && (
-                <p
-                  className={cn(
-                    'text-sm font-display font-semibold mt-3 pt-3 border-t border-border tabular-nums',
-                    balance.overdue > 0 ? 'text-danger' : 'text-text-primary'
-                  )}
-                >
-                  {formatPrice(balance.outstanding)} outstanding
-                </p>
-              )}
             </Link>
-          );
-        })}
-      </Stagger>
+          ))}
+        </Stagger>
+      </div>
     </div>
   );
 }
