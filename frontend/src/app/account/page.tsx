@@ -71,13 +71,13 @@ export default function AccountPage() {
         <MolecularNetwork className="absolute inset-0 w-full h-full" />
         <div className="relative max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-12">
           <Animate variant="fadeUp" duration={0.5}>
-            <div className="flex items-start justify-between gap-4 mb-8">
-              <div className="flex items-center gap-3">
+            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-8">
+              <div className="flex items-center gap-3 min-w-0">
                 <div className="w-12 h-12 rounded-xl bg-white/10 border border-white/15 backdrop-blur-sm text-white flex items-center justify-center shrink-0">
                   <Building2 className="w-6 h-6" />
                 </div>
-                <div>
-                  <h1 className="font-display text-2xl font-bold text-white">{company.name}</h1>
+                <div className="min-w-0">
+                  <h1 className="font-display text-2xl font-bold text-white break-words">{company.name}</h1>
                   <p className="text-sm text-white/60">
                     {company.contactName} &middot; {company.email}
                     {company.taxId && <> &middot; Reg. {company.taxId}</>}
@@ -86,7 +86,7 @@ export default function AccountPage() {
               </div>
               <button
                 onClick={handleLogout}
-                className="inline-flex items-center gap-2 rounded-lg border border-white/15 bg-white/10 backdrop-blur-sm px-3 py-1.5 text-sm font-medium text-white hover:bg-white/20 transition-colors cursor-pointer shrink-0"
+                className="inline-flex items-center gap-2 rounded-lg border border-white/15 bg-white/10 backdrop-blur-sm px-3 py-1.5 text-sm font-medium text-white hover:bg-white/20 transition-colors cursor-pointer shrink-0 self-start"
               >
                 <LogOut className="w-3.5 h-3.5" /> Sign Out
               </button>
