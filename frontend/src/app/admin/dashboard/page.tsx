@@ -19,7 +19,7 @@ interface DashboardStats {
   recentOrders: {
     id: string;
     orderNumber: string;
-    customerName: string;
+    company: { name: string };
     total: number;
     status: string;
     createdAt: string;
@@ -132,7 +132,7 @@ export default function AdminDashboardPage() {
                 <Link key={order.id} href="/admin/orders" className="flex items-center justify-between py-2.5 border-b border-border last:border-0 hover:bg-surface-elevated/50 -mx-2 px-2 rounded transition-colors">
                   <div>
                     <p className="font-medium text-sm">{order.orderNumber}</p>
-                    <p className="text-xs text-text-muted">{order.customerName} &middot; {formatDate(order.createdAt)}</p>
+                    <p className="text-xs text-text-muted">{order.company.name} &middot; {formatDate(order.createdAt)}</p>
                   </div>
                   <div className="text-right">
                     <p className="font-display font-semibold text-sm">{formatPrice(order.total)}</p>

@@ -17,19 +17,28 @@ export const MALAYSIAN_STATES = [
   'Terengganu',
 ] as const;
 
+// Full B2B lifecycle (see OrderStatus in schema.prisma) — no Pricing
+// Approval/Purchasing stages, stock is pre-secured via
+// PreorderCampaign/Batch, so this is the complete set.
 export const ORDER_STATUS_LABELS: Record<string, string> = {
-  PENDING: 'Pending',
+  PENDING: 'Placed',
   CONFIRMED: 'Confirmed',
+  PACKING: 'Packing',
   SHIPPED: 'Shipped',
+  PARTIALLY_SHIPPED: 'Partially Shipped',
   DELIVERED: 'Delivered',
+  COMPLETE: 'Complete',
   CANCELLED: 'Cancelled',
 };
 
 export const ORDER_STATUS_COLORS: Record<string, string> = {
   PENDING: 'bg-yellow-100 text-yellow-800',
   CONFIRMED: 'bg-blue-100 text-blue-800',
-  SHIPPED: 'bg-purple-100 text-purple-800',
-  DELIVERED: 'bg-green-100 text-green-800',
+  PACKING: 'bg-purple-100 text-purple-800',
+  SHIPPED: 'bg-indigo-100 text-indigo-800',
+  PARTIALLY_SHIPPED: 'bg-orange-100 text-orange-800',
+  DELIVERED: 'bg-teal-100 text-teal-800',
+  COMPLETE: 'bg-green-100 text-green-800',
   CANCELLED: 'bg-red-100 text-red-800',
 };
 
