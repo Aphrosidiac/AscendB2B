@@ -1,6 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import type { EmailOutbox } from '@prisma/client';
-import { env } from '../config/env.js';
+import type { EmailOutbox, Payment } from '@prisma/client';
 import { isEmailEnabled, sendEmail } from './email.js';
 import { generateReceiptPdf } from './receipt-pdf.js';
 import { renderOrderConfirmation } from '../emails/order-confirmation.js';
@@ -18,35 +17,56 @@ const BACKOFF_MS = [
 ];
 const MAX_ATTEMPTS = BACKOFF_MS.length;
 
-// Rebuild the gateway's payment URL from what IS persisted on the order —
-// the bill URL itself never is. Both gateways use stable <host>/<ref> style
-// URLs, so this matches what createBill originally returned.
-export function reconstructPaymentUrl(order: { paymentGateway: string | null; paymentRef: string | null }): string | undefined {
-  if (!order.paymentRef) return undefined;
-  if (order.paymentGateway === 'toyyibpay') {
-    const host = env.TOYYIBPAY_SANDBOX ? 'https://dev.toyyibpay.com' : 'https://toyyibpay.com';
-    return `${host}/${order.paymentRef}`;
-  }
-  if (order.paymentGateway === 'billplz') {
-    const host = env.BILLPLZ_SANDBOX ? 'https://www.billplz-sandbox.com' : 'https://www.billplz.com';
-    return `${host}/bills/${order.paymentRef}`;
-  }
-  return undefined;
+const ORDER_INCLUDE = {
+  items: {
+    include: {
+      variant: { select: { code: true, size: true, product: { select: { name: true } } } },
+      kit: { select: { name: true } },
+    },
+  },
+  company: { select: { name: true, contactName: true, phone: true, email: true, creditTerms: true } },
+  shippingAddress: { select: { line1: true, line2: true, city: true, state: true, postcode: true } },
+  discountCode: { select: { code: true, discountType: true, discountValue: true } },
+  shipments: { select: { carrier: true, trackingNumber: true } },
+} as const;
+
+// Best-effort match from an Order to the zero-item pay-now Invoice raised for
+// it — Invoice belongs to Company, not Order (the ERD's shipment/invoice
+// decoupling), so there's no FK to follow directly. A pay-now invoice is
+// recognisable by shape: same company, same total, no InvoiceItems (a real
+// shipment-billed invoice always has items), issued within moments of the
+// order itself. See orders.controller.ts's createOrder for the documented
+// gap this stems from (no Order<->Invoice link at all).
+async function findPayNowPayment(
+  fastify: FastifyInstance,
+  order: { companyId: string; total: number; createdAt: Date }
+): Promise<Payment | null> {
+  const invoice = await fastify.prisma.invoice.findFirst({
+    where: {
+      companyId: order.companyId,
+      total: order.total,
+      items: { none: {} },
+      issueDate: {
+        gte: new Date(order.createdAt.getTime() - 5 * 60 * 1000),
+        lte: new Date(order.createdAt.getTime() + 5 * 60 * 1000),
+      },
+    },
+    orderBy: { issueDate: 'desc' },
+    include: { payments: { orderBy: { paidAt: 'desc' }, take: 1 } },
+  });
+  return invoice?.payments[0] ?? null;
 }
 
 async function processRow(fastify: FastifyInstance, row: EmailOutbox): Promise<void> {
   const order = await fastify.prisma.order.findUnique({
     where: { id: row.orderId },
-    include: {
-      items: { include: { variant: { select: { code: true, size: true, product: { select: { name: true } } } } } },
-      discountCode: { select: { code: true, discountType: true, discountValue: true } },
-    },
+    include: ORDER_INCLUDE,
   });
 
   // Order gone/deleted, or a confirmation for an order that got cancelled
   // before we sent it — pointless (or confusing) to email now. Receipts are
-  // exempt from the cancel check: a PAID order stays paid through later
-  // status changes and the customer is owed the receipt regardless.
+  // exempt from the cancel check: a payment stays confirmed through later
+  // status changes and the company is owed the receipt regardless.
   const ineligible =
     !order ||
     order.deletedAt !== null ||
@@ -71,15 +91,15 @@ async function processRow(fastify: FastifyInstance, row: EmailOutbox): Promise<v
     const settings = Object.fromEntries(settingsRows.map((s) => [s.key, s.value]));
 
     if (row.type === 'PAYMENT_RECEIPT') {
-      ({ subject, html } = renderPaymentReceipt(order, order.updatedAt, settings));
-      const pdf = await generateReceiptPdf(order, settings);
+      const payment = await findPayNowPayment(fastify, order);
+      if (!payment) {
+        throw new Error('no matching Payment found for this order — cannot render a payment receipt');
+      }
+      ({ subject, html } = renderPaymentReceipt(order, payment, settings));
+      const pdf = await generateReceiptPdf(order, settings, payment, order.shipments);
       attachments = [{ filename: `receipt-${order.orderNumber}.pdf`, content: pdf }];
     } else {
-      const paymentUrl =
-        order.paymentMethod === 'WHATSAPP' || order.paymentStatus === 'PAID'
-          ? undefined
-          : reconstructPaymentUrl(order);
-      ({ subject, html } = renderOrderConfirmation(order, paymentUrl, settings));
+      ({ subject, html } = renderOrderConfirmation(order, order.id, settings));
     }
 
     const { id: resendId } = await sendEmail({ to: row.toEmail, subject, html, attachments });

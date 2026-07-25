@@ -261,8 +261,8 @@ export function HomeClient({
                   temperature-conscious packaging.</>
                 )}{' '}
                 Prices are listed in Malaysian Ringgit (MYR) with no hidden fees,
-                and you can pay by bank transfer, FPX or card. No account is needed: simply order and{' '}
-                <Link href="/track" className="text-primary-light hover:underline">track your delivery</Link> using your phone number.
+                and you can pay by bank transfer, FPX or card. Sign in to your business account anytime to{' '}
+                <Link href="/account/orders" className="text-primary-light hover:underline">track your order</Link>.
               </p>
               <p>
                 New to peptides? Read our{' '}

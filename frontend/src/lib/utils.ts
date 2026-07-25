@@ -1,5 +1,5 @@
 import { clsx, type ClassValue } from 'clsx';
-import type { Product, ProductVariant } from '@/types';
+import type { Product, ProductVariant, PriceTier } from '@/types';
 
 export function cn(...inputs: ClassValue[]) {
   return clsx(inputs);
@@ -61,6 +61,22 @@ export function isSaleActive(product: SalePricing, now: Date = new Date()): bool
 
 export function getEffectivePrice(product: SalePricing, now: Date = new Date()): number {
   return isSaleActive(product, now) ? product.salePrice! : product.price;
+}
+
+// B2B quantity-break pricing display mirror — the tier with the highest
+// minQty <= the requested quantity wins, else falls back to the (already
+// sale-adjusted) `fallbackPrice`. Mirrors
+// backend/src/utils/product-pricing.ts's getTieredUnitPrice, which is what
+// actually computes the price charged at order creation; this is display
+// only (cart/checkout totals are estimates until the order response comes
+// back with the server-computed total).
+export function getTieredPrice(priceTiers: PriceTier[] | undefined, quantity: number, fallbackPrice: number): number {
+  if (!priceTiers || priceTiers.length === 0) return fallbackPrice;
+  let best: PriceTier | undefined;
+  for (const tier of priceTiers) {
+    if (tier.minQty <= quantity && (!best || tier.minQty > best.minQty)) best = tier;
+  }
+  return best ? best.unitPrice : fallbackPrice;
 }
 
 export function formatDate(date: string): string {

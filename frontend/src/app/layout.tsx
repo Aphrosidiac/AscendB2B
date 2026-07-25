@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Script from 'next/script';
 import { Inter, Outfit } from 'next/font/google';
 import { CartProvider } from '@/lib/cart';
+import { CompanyAuthProvider } from '@/hooks/useCompanyAuth';
 import { SiteChrome } from '@/components/layout/SiteChrome';
 import { OrganizationJsonLd, WebSiteJsonLd } from '@/components/JsonLd';
 import { getSettingsServer, getProductsServer } from '@/lib/server-api';
@@ -134,11 +135,13 @@ function gtag(){dataLayer.push(arguments);}
 gtag('js', new Date());
 gtag('config', 'G-4PHY1Z9BHD');`}
         </Script>
-        <CartProvider>
-          <SiteChrome announcementEnabled={announcementEnabled} announcementText={settings.announcement_text || ''}>
-            {children}
-          </SiteChrome>
-        </CartProvider>
+        <CompanyAuthProvider>
+          <CartProvider>
+            <SiteChrome announcementEnabled={announcementEnabled} announcementText={settings.announcement_text || ''}>
+              {children}
+            </SiteChrome>
+          </CartProvider>
+        </CompanyAuthProvider>
       </body>
     </html>
   );

@@ -1,135 +1,69 @@
 import type { FastifyInstance } from 'fastify';
-import { getGatewayByBillId } from './payment-gateway.js';
-import { restoreOrderInventory } from './order-inventory.js';
+import type { PaymentMethod } from '@prisma/client';
 import { enqueueEmail } from './email-outbox.js';
 
-// Online orders older than this with no successful payment are re-checked
-// against the gateway, then released if still unpaid.
-const STALE_AFTER_MS = 15 * 60 * 1000; // 15 min — re-query gateway
-const RELEASE_AFTER_MS = 2 * 60 * 60 * 1000; // 2 h — give up and restock
-// WhatsApp checkouts have no gateway to verify against — an order the admin
-// never confirmed just holds its reserved stock forever. Generous window
-// because confirmation is a manual chat exchange, not an instant callback.
-const WHATSAPP_RELEASE_AFTER_MS = 48 * 60 * 60 * 1000; // 48 h — cancel and restock
-
 /**
- * Mark an order PAID + CONFIRMED. Idempotent: the guarded updateMany only
- * transitions from UNPAID, so duplicate callbacks/reconciles are no-ops.
- * Returns true if this call performed the transition.
+ * Record a confirmed gateway payment against an Invoice, and (best-effort)
+ * enqueue the order's PAYMENT_RECEIPT email.
  *
- * Every PAID transition funnels through here (gateway callback, redirect
- * verify, reconcile sweep), so this is also the single place the payment
- * receipt email gets queued — in the same transaction as the transition.
+ * There is no unique constraint tying a gateway bill id to a Payment row (the
+ * schema doesn't persist a pending bill ref anywhere — see decision #3's
+ * documented gap in orders.controller.ts), so idempotency here is a
+ * check-then-insert against (invoiceId, paymentRef) rather than a DB
+ * constraint. A callback and a redirect-verify racing within the same few
+ * seconds could in theory still double-insert; accepted given the schema
+ * can't express a stronger guard without a migration.
  */
-export async function applyPaid(
+export async function confirmInvoicePayment(
   fastify: FastifyInstance,
-  order: { id: string; orderNumber: string; email: string | null }
+  params: {
+    invoiceId: string;
+    amount: number;
+    method: PaymentMethod;
+    paymentRef: string;
+    // The Order this payment was raised for, if recoverable (Billplz
+    // reference_2 — see payment-gateway.ts). Only used to enqueue the
+    // PAYMENT_RECEIPT email; the Payment row itself only needs the invoice.
+    orderId?: string;
+  }
 ): Promise<boolean> {
-  const transitioned = await fastify.prisma.$transaction(async (tx) => {
-    const { count } = await tx.order.updateMany({
-      where: { id: order.id, paymentStatus: 'UNPAID' },
-      data: { paymentStatus: 'PAID', status: 'CONFIRMED' },
+  return fastify.prisma.$transaction(async (tx) => {
+    const already = await tx.payment.findFirst({
+      where: { invoiceId: params.invoiceId, paymentRef: params.paymentRef },
+      select: { id: true },
     });
-    if (count > 0) await enqueueEmail(tx, order, 'PAYMENT_RECEIPT');
-    return count > 0;
-  });
-  if (transitioned) fastify.log.info(`Order ${order.orderNumber} marked PAID`);
-  return transitioned;
-}
+    if (already) return false;
 
-/**
- * Mark an order FAILED and restore the stock + discount usage it reserved at
- * creation. Idempotent on the UNPAID -> FAILED transition.
- */
-export async function applyFailed(
-  fastify: FastifyInstance,
-  orderId: string
-): Promise<boolean> {
-  const { count } = await fastify.prisma.order.updateMany({
-    where: { id: orderId, paymentStatus: 'UNPAID' },
-    data: { paymentStatus: 'FAILED' },
-  });
-  if (count === 0) return false;
+    await tx.payment.create({
+      data: {
+        invoiceId: params.invoiceId,
+        amount: params.amount,
+        method: params.method,
+        paymentRef: params.paymentRef,
+      },
+    });
 
-  // Atomic, idempotent, floored — safe even if a callback and a sweep both flip
-  // this order FAILED at the same time.
-  await restoreOrderInventory(fastify, orderId);
-  fastify.log.info(`Order ${orderId} marked FAILED — stock & discount restored`);
-  return true;
-}
-
-/**
- * Sweep stale UNPAID online orders. For each: re-query the gateway for the true
- * paid state (covers missed/dropped callbacks), confirm if paid, and release
- * stock if it's been unpaid long enough that the payment session is dead.
- *
- * This is the safety net for two real failure modes:
- *  - the customer paid but the callback never arrived  -> would stay UNPAID
- *  - the customer abandoned payment (closed the tab)    -> stock held forever
- */
-export async function reconcileStaleOrders(fastify: FastifyInstance): Promise<void> {
-  const now = Date.now();
-  const orders = await fastify.prisma.order.findMany({
-    where: {
-      paymentStatus: 'UNPAID',
-      paymentMethod: 'BILLPLZ', // online-payment orders (gateway-backed)
-      createdAt: { lt: new Date(now - STALE_AFTER_MS) },
-    },
-    orderBy: { createdAt: 'asc' },
-    take: 50,
-  });
-
-  for (const order of orders) {
-    // Stranded order: createBill threw AFTER the tx committed, so stock was
-    // reserved but no bill exists (paymentRef is null). Nothing to verify —
-    // release it once it's clearly dead.
-    if (!order.paymentRef) {
-      if (order.createdAt.getTime() < now - RELEASE_AFTER_MS) {
-        await applyFailed(fastify, order.id);
-      }
-      continue;
+    if (params.orderId) {
+      const order = await tx.order.findUnique({
+        where: { id: params.orderId },
+        select: { id: true, company: { select: { email: true } } },
+      });
+      if (order) await enqueueEmail(tx, order, 'PAYMENT_RECEIPT', order.company.email);
     }
 
-    const gateway = getGatewayByBillId(order.paymentRef, order.paymentGateway ?? undefined);
-    if (!gateway) continue;
-
-    try {
-      const { paid } = await gateway.verifyPaid(order.paymentRef);
-      if (paid) {
-        await applyPaid(fastify, order);
-      } else if (order.createdAt.getTime() < now - RELEASE_AFTER_MS) {
-        await applyFailed(fastify, order.id);
-      }
-    } catch (err) {
-      // Gateway hiccup — leave the order untouched and retry next sweep.
-      fastify.log.warn({ err, orderId: order.id }, 'reconcile: gateway verify failed');
-    }
-  }
-
-  // WhatsApp orders the admin never confirmed: cancel and release the stock.
-  // Same stockRestored-guarded restore as the online-payment path, so a
-  // concurrent admin action can't double-restore.
-  const staleWhatsapp = await fastify.prisma.order.findMany({
-    where: {
-      paymentMethod: 'WHATSAPP',
-      status: 'PENDING',
-      paymentStatus: 'UNPAID',
-      createdAt: { lt: new Date(now - WHATSAPP_RELEASE_AFTER_MS) },
-    },
-    select: { id: true, orderNumber: true },
-    orderBy: { createdAt: 'asc' },
-    take: 50,
+    return true;
   });
-
-  for (const order of staleWhatsapp) {
-    // Guarded transition (only from PENDING) — a just-confirmed order is safe.
-    const { count } = await fastify.prisma.order.updateMany({
-      where: { id: order.id, status: 'PENDING' },
-      data: { status: 'CANCELLED' },
-    });
-    if (count === 0) continue;
-
-    await restoreOrderInventory(fastify, order.id);
-    fastify.log.info(`Order ${order.orderNumber} auto-cancelled (WhatsApp, unconfirmed 48h) — stock restored`);
-  }
 }
+
+// NOTE on the missing stale-payment sweep: the old B2C code periodically
+// re-queried the gateway for any order stuck UNPAID past a timeout, because
+// stock was reserved at order-creation time and had to be released if the
+// customer abandoned payment. Under the B2B rules, nothing is reserved at
+// order time (see rule #1 in orders.controller.ts) — an abandoned pay-now
+// attempt just leaves the order without a Payment, with no stock or discount
+// held hostage. There's also no schema field to enumerate "orders with a
+// pending Billplz bill" from (no persisted bill ref — see decision #3), so a
+// sweep isn't reconstructable the way it used to be. If this ever needs to
+// become actionable again (e.g. surfacing "payment started but never
+// finished" to an admin), it needs a real column to key off, not a periodic
+// re-guess.

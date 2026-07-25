@@ -8,7 +8,14 @@ export interface CreateBillParams {
   phone: string;
   amount: number;
   description: string;
-  orderNumber: string;
+  // Fed to the gateway as reference_1 — the Invoice number for the pay-now
+  // flow (not an Order number anymore; Invoice, not Order, is what carries
+  // the payment). Kept the field name generic since it's just an opaque
+  // reference to the gateway.
+  invoiceNumber: string;
+  // Fed to the gateway as reference_2 — see billplz.ts's CreateBillParams for
+  // why: Invoice has no FK back to Order, so the Order id rides along here so
+  // the callback/redirect can still enqueue that order's PAYMENT_RECEIPT email.
   orderId: string;
 }
 
@@ -21,11 +28,12 @@ export interface BillResult {
 export interface CallbackResult {
   billId: string;
   // 'paid'    — payment confirmed
-  // 'failed'  — gateway reported an explicit failure (safe to release stock)
+  // 'failed'  — gateway reported an explicit failure
   // 'pending' — not yet final; do nothing and wait for the next callback
   status: 'paid' | 'failed' | 'pending';
   amount?: number; // sen/cents, best-effort, for verification only
-  orderRef?: string;
+  invoiceNumber?: string;
+  orderId?: string;
 }
 
 export interface PaymentGateway {
@@ -35,7 +43,7 @@ export interface PaymentGateway {
   parseCallback(body: Record<string, string>): CallbackResult;
   buildRedirectUrl(query: Record<string, string>): string;
   /** Re-query the gateway for the authoritative paid state of a bill. */
-  verifyPaid(billId: string): Promise<{ paid: boolean; amount?: number }>;
+  verifyPaid(billId: string): Promise<{ paid: boolean; amount?: number; invoiceNumber?: string; orderId?: string }>;
 }
 
 function getBackendUrl(): string {
@@ -61,7 +69,8 @@ const billplzGateway: PaymentGateway = {
       description: params.description,
       callbackUrl: `${backendUrl}/api/v1/payments/callback`,
       redirectUrl: `${backendUrl}/api/v1/payments/redirect`,
-      referenceOne: params.orderNumber,
+      referenceOne: params.invoiceNumber,
+      referenceTwo: params.orderId,
     });
     return { billId: bill.id, paymentUrl: bill.url, gateway: 'billplz' };
   },
@@ -73,11 +82,14 @@ const billplzGateway: PaymentGateway = {
     return {
       billId: body.id,
       // Billplz only fires a meaningful callback when a bill is paid; an
-      // unpaid/"due" callback is treated as pending (never auto-failed) so the
-      // stale-order reconciler decides its fate instead.
+      // unpaid/"due" callback is treated as pending (never auto-marked failed).
       status: paid ? 'paid' : 'pending',
       amount: body.paid_amount ? parseInt(body.paid_amount, 10) : undefined,
-      orderRef: body.id,
+      // Billplz echoes back whatever reference_1/reference_2 the bill was
+      // created with — this is how the Invoice (and, best-effort, the Order)
+      // get identified again, since neither persists the bill id anywhere.
+      invoiceNumber: body.reference_1,
+      orderId: body.reference_2,
     };
   },
   buildRedirectUrl(query) {
@@ -90,7 +102,7 @@ const billplzGateway: PaymentGateway = {
   },
   async verifyPaid(billId) {
     const bill = await billplz.getBill(billId);
-    return { paid: bill.paid, amount: bill.paid_amount };
+    return { paid: bill.paid, amount: bill.paid_amount, invoiceNumber: bill.reference_1, orderId: bill.reference_2 };
   },
 };
 
@@ -106,7 +118,14 @@ const toyyibpayGateway: PaymentGateway = {
       phone: params.phone,
       amount: params.amount,
       description: params.description,
-      orderNumber: params.orderNumber,
+      // ToyyibPay's API only has one external-reference slot — the Invoice
+      // number goes there. It has no second slot for the Order id (unlike
+      // Billplz's reference_2), so a ToyyibPay pay-now callback can't recover
+      // the originating order for the PAYMENT_RECEIPT email; only the
+      // Invoice/Payment gets recorded. Billplz is the gateway this B2B rework
+      // was actually built against — this is a pre-existing, now slightly
+      // wider gap on the secondary gateway.
+      orderNumber: params.invoiceNumber,
       callbackUrl: `${backendUrl}/api/v1/payments/callback`,
       returnUrl: `${backendUrl}/api/v1/payments/redirect`,
     });
@@ -118,8 +137,6 @@ const toyyibpayGateway: PaymentGateway = {
   },
   parseCallback(body) {
     // ToyyibPay status: 1 = success, 2 = pending, 3 = fail.
-    // Only an explicit fail (3) releases stock; pending (2) must NOT mark the
-    // order failed, otherwise the later success callback is ignored.
     const status =
       body.status === '1' ? 'paid' : body.status === '3' ? 'failed' : 'pending';
     // ToyyibPay's server-to-server callback `amount` is ALWAYS in sen (e.g.
@@ -128,7 +145,7 @@ const toyyibpayGateway: PaymentGateway = {
     // not NaN.
     const parsedAmount = body.amount != null ? parseInt(body.amount, 10) : NaN;
     const amount = Number.isFinite(parsedAmount) ? parsedAmount : undefined;
-    return { billId: body.billcode, status, amount, orderRef: body.order_id };
+    return { billId: body.billcode, status, amount, invoiceNumber: body.order_id };
   },
   buildRedirectUrl(query) {
     const paid = query.status_id === '1' && !!query.billcode;

@@ -1,14 +1,14 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { getPaginationParams, paginatedResponse } from '../../utils/pagination.js';
-import { refundBill } from '../../utils/billplz.js';
-import { restoreOrderInventory } from '../../utils/order-inventory.js';
-import { enqueueEmail } from '../../utils/email-outbox.js';
+
+const ORDER_STATUSES = ['PENDING', 'CONFIRMED', 'PACKING', 'SHIPPED', 'PARTIALLY_SHIPPED', 'DELIVERED', 'COMPLETE', 'CANCELLED'] as const;
 
 const updateOrderSchema = z.object({
-  status: z.enum(['PENDING', 'CONFIRMED', 'SHIPPED', 'DELIVERED', 'CANCELLED']).optional(),
-  paymentStatus: z.enum(['UNPAID', 'PAID', 'FAILED', 'REFUNDED']).optional(),
-  trackingNumber: z.string().max(50).optional(),
+  status: z.enum(ORDER_STATUSES).optional(),
+  // Logged onto the OrderStatusHistory row this status change creates —
+  // ignored if `status` isn't also present.
+  note: z.string().max(1000).optional(),
   notes: z.string().optional(),
 });
 
@@ -23,16 +23,6 @@ const EMAIL_STATUS_SELECT = {
   select: { type: true, status: true, attempts: true, sentAt: true, lastError: true },
 } as const;
 
-// Order status and payment status are otherwise freely editable in any
-// direction — the only restriction is this one: once an online-gateway
-// payment (Billplz/ToyyibPay) has been confirmed Paid, it's locked and can
-// never be changed again through this endpoint. A WhatsApp/manual-transfer
-// order's Paid status stays editable, since that was an admin's manual call
-// in the first place (and can just as easily be an admin's manual fix).
-function isLockedOnlinePayment(order: { paymentMethod: string; paymentStatus: string }): boolean {
-  return order.paymentMethod === 'BILLPLZ' && order.paymentStatus === 'PAID';
-}
-
 export async function adminListOrders(fastify: FastifyInstance, query: Record<string, string>) {
   const { page, limit, skip } = getPaginationParams(query);
 
@@ -45,8 +35,9 @@ export async function adminListOrders(fastify: FastifyInstance, query: Record<st
   if (query.search) {
     where.OR = [
       { orderNumber: { contains: query.search, mode: 'insensitive' } },
-      { customerName: { contains: query.search, mode: 'insensitive' } },
-      { phone: { contains: query.search } },
+      { company: { name: { contains: query.search, mode: 'insensitive' } } },
+      { company: { contactName: { contains: query.search, mode: 'insensitive' } } },
+      { company: { email: { contains: query.search, mode: 'insensitive' } } },
     ];
   }
 
@@ -54,7 +45,8 @@ export async function adminListOrders(fastify: FastifyInstance, query: Record<st
     fastify.prisma.order.findMany({
       where,
       include: {
-        items: { include: { variant: { select: { code: true, size: true, product: { select: { name: true } } } } } },
+        items: { include: { variant: { select: { code: true, size: true, product: { select: { name: true } } } }, kit: { select: { name: true } } } },
+        company: { select: { id: true, name: true, contactName: true, email: true, creditTerms: true } },
         discountCode: { select: { code: true, discountType: true, discountValue: true } },
         emails: EMAIL_STATUS_SELECT,
       },
@@ -72,9 +64,30 @@ export async function adminGetOrder(fastify: FastifyInstance, id: string) {
   const order = await fastify.prisma.order.findUnique({
     where: { id },
     include: {
-      items: { include: { variant: { include: { product: true } } } },
+      items: { include: { variant: { include: { product: true } }, kit: true } },
+      company: true,
+      shippingAddress: true,
       discountCode: { select: { code: true, discountType: true, discountValue: true } },
       emails: EMAIL_STATUS_SELECT,
+      // Nested orderItem (not just batch) mirrors getMyOrder's include in
+      // orders/orders.controller.ts — the admin Shipments tab needs the same
+      // per-line item display (variant/kit name) as the company-facing page.
+      shipments: {
+        include: {
+          items: {
+            include: {
+              batch: true,
+              orderItem: {
+                include: {
+                  variant: { select: { code: true, size: true, product: { select: { name: true } } } },
+                  kit: { select: { name: true } },
+                },
+              },
+            },
+          },
+        },
+      },
+      statusHistory: { orderBy: { changedAt: 'asc' } },
     },
   });
 
@@ -85,58 +98,33 @@ export async function adminGetOrder(fastify: FastifyInstance, id: string) {
 export async function adminUpdateOrder(fastify: FastifyInstance, id: string, body: unknown) {
   const data = updateOrderSchema.parse(body);
 
-  const order = await fastify.prisma.order.findUnique({ where: { id }, include: { items: true } });
+  const order = await fastify.prisma.order.findUnique({
+    where: { id },
+    include: { items: { include: { shipmentItems: { select: { id: true } } } } },
+  });
   if (!order) throw { statusCode: 404, message: 'Order not found' };
 
-  if (data.paymentStatus && isLockedOnlinePayment(order)) {
-    throw {
-      statusCode: 400,
-      message: 'This order was paid via online transfer and is locked — payment status can no longer be changed.',
-    };
-  }
-
   if (data.status === 'CANCELLED') {
-    await restoreOrderInventory(fastify, order.id);
-    fastify.log.info(`Order ${order.orderNumber} cancelled — stock restored`);
-  }
-
-  if (data.paymentStatus) {
-    if (data.paymentStatus === 'FAILED') {
-      await restoreOrderInventory(fastify, order.id);
+    const alreadyShipped = order.items.some((i) => i.shipmentItems.length > 0);
+    if (alreadyShipped) {
+      throw {
+        statusCode: 400,
+        message: 'This order already has shipments and cannot be cancelled — use a return/refund flow instead.',
+      };
     }
-    if (data.paymentStatus === 'REFUNDED') {
-      if (order.paymentRef && order.paymentGateway === 'billplz') {
-        try {
-          await refundBill(order.paymentRef, `Refund for order ${order.orderNumber}`);
-          fastify.log.info(`Billplz refund initiated for order ${order.orderNumber}`);
-        } catch (err) {
-          fastify.log.error({ err, orderId: order.id }, 'Billplz refund failed');
-          throw { statusCode: 400, message: 'Refund API call failed — check logs for details' };
-        }
-      } else if (order.paymentGateway === 'toyyibpay') {
-        // ToyyibPay has no refund API — the money must be returned manually via
-        // the ToyyibPay dashboard / bank. We only restore stock + discount here.
-        fastify.log.warn(
-          `Order ${order.orderNumber} marked REFUNDED for ToyyibPay — process the actual refund MANUALLY in the ToyyibPay dashboard`
-        );
-      }
-      await restoreOrderInventory(fastify, order.id);
-    }
+    // Nothing to restore: nothing is reserved/decremented at order-creation
+    // time (see rule #1 in orders.controller.ts) — a cancel before any
+    // shipment is just a status change.
   }
 
-  // Clean trackingNumber — store trimmed or null
-  const updateData: Record<string, unknown> = { ...data };
-  if (data.trackingNumber !== undefined) {
-    updateData.trackingNumber = data.trackingNumber.trim() || null;
-  }
+  const updateData: Record<string, unknown> = {};
+  if (data.notes !== undefined) updateData.notes = data.notes;
+  if (data.status) updateData.status = data.status;
 
-  // Admin manually marking an order Paid (the WhatsApp/manual-transfer flow)
-  // is a real payment confirmation — queue the receipt email with the same
-  // same-transaction guarantee the gateway path gets in applyPaid.
-  if (data.paymentStatus === 'PAID' && order.paymentStatus !== 'PAID') {
+  if (data.status && data.status !== order.status) {
     return fastify.prisma.$transaction(async (tx) => {
       const updated = await tx.order.update({ where: { id }, data: updateData });
-      await enqueueEmail(tx, updated, 'PAYMENT_RECEIPT');
+      await tx.orderStatusHistory.create({ data: { orderId: id, status: data.status!, note: data.note } });
       return updated;
     });
   }
@@ -146,7 +134,7 @@ export async function adminUpdateOrder(fastify: FastifyInstance, id: string, bod
 
 // Soft-delete: never removes the row. It just sets deletedAt so the order
 // disappears from every normal view and only shows up under the "DELETED"
-// filter — order/payment status and stock are untouched either way.
+// filter — order status and any shipments/invoices are untouched either way.
 export async function adminDeleteOrder(fastify: FastifyInstance, id: string) {
   const order = await fastify.prisma.order.findUnique({ where: { id } });
   if (!order) throw { statusCode: 404, message: 'Order not found' };
@@ -159,19 +147,19 @@ export async function adminRestoreOrder(fastify: FastifyInstance, id: string) {
   return fastify.prisma.order.update({ where: { id }, data: { deletedAt: null } });
 }
 
-// Re-queue (or first-queue, if the row never existed — e.g. the email was
-// added to the order after checkout) an email for the worker to send. Resets
-// a FAILED row's attempt budget so the backoff starts over.
+// Re-queue (or first-queue, if the row never existed) an email for the
+// worker to send. Resets a FAILED row's attempt budget so the backoff starts
+// over. Recipient is always the Company's email now (Order dropped its own
+// optional guest email field).
 export async function adminResendOrderEmail(fastify: FastifyInstance, id: string, body: unknown) {
   const { type } = resendEmailSchema.parse(body);
 
-  const order = await fastify.prisma.order.findUnique({ where: { id } });
+  const order = await fastify.prisma.order.findUnique({ where: { id }, include: { company: { select: { email: true } } } });
   if (!order) throw { statusCode: 404, message: 'Order not found' };
-  if (!order.email) throw { statusCode: 400, message: 'This order has no email address' };
 
   return fastify.prisma.emailOutbox.upsert({
     where: { orderId_type: { orderId: order.id, type } },
-    update: { status: 'PENDING', attempts: 0, nextAttemptAt: new Date(), lastError: null, toEmail: order.email },
-    create: { orderId: order.id, type, toEmail: order.email },
+    update: { status: 'PENDING', attempts: 0, nextAttemptAt: new Date(), lastError: null, toEmail: order.company.email },
+    create: { orderId: order.id, type, toEmail: order.company.email },
   });
 }

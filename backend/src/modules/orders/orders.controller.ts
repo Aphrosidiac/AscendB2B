@@ -1,362 +1,376 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { generateOrderNumber } from '../../utils/order-number.js';
-import { buildWhatsAppUrl } from '../../utils/whatsapp.js';
+import { generateInvoiceNumber } from '../../utils/invoice-number.js';
 import { getActiveGateway } from '../../utils/payment-gateway.js';
 import { validateDiscountCode } from '../admin/admin-discounts.controller.js';
-import { normalizePhone } from '../../utils/phone.js';
-import { env } from '../../config/env.js';
-import { getEffectivePrice } from '../../utils/product-pricing.js';
+import { getTieredUnitPrice } from '../../utils/product-pricing.js';
 import { getVariantDisplayName } from '../../utils/product-addons.js';
 import { enqueueEmail } from '../../utils/email-outbox.js';
+import { getPaginationParams, paginatedResponse } from '../../utils/pagination.js';
 
-const createOrderSchema = z.object({
-  customerName: z.string().min(1),
-  phone: z.string().min(1).transform(normalizePhone),
-  // The checkout form sends "" when the (optional) email is left blank —
-  // treat that as absent instead of failing .email() validation.
-  email: z.preprocess((v) => (v === '' ? undefined : v), z.string().email().optional()),
-  address: z.string().min(1),
-  city: z.string().min(1),
-  state: z.string().min(1),
-  postcode: z.string().min(1),
-  paymentMethod: z.enum(['WHATSAPP', 'BILLPLZ']),
-  discountCode: z.string().optional(),
-  notes: z.string().optional(),
-  idempotencyKey: z.string().min(8).max(100).optional(),
-  items: z.array(
-    z.object({
-      variantId: z.string(),
-      quantity: z.number().int().min(1).max(100),
-    })
-  ).min(1).max(50),
-}).superRefine((data, ctx) => {
-  // ToyyibPay rejects createBill outright with an empty billEmail — catch this
-  // before the order transaction runs, not after stock is already reserved.
-  if (data.paymentMethod === 'BILLPLZ' && !data.email) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['email'], message: 'Email is required for online payment' });
-  }
-  // Cap total units per order — an unauthenticated checkout (especially
-  // WhatsApp, which needs no payment) must not be able to reserve the whole
-  // inventory in one request.
-  const totalQuantity = data.items.reduce((sum, i) => sum + i.quantity, 0);
-  if (totalQuantity > 50) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['items'], message: 'Order exceeds the maximum of 50 items. Please contact us for bulk orders.' });
+const orderItemInputSchema = z.object({
+  variantId: z.string().optional(),
+  kitId: z.string().optional(),
+  quantity: z.number().int().min(1).max(100000),
+}).superRefine((v, ctx) => {
+  // variantId XOR kitId — same mutual-exclusivity convention as QuotationItem.
+  if (!!v.variantId === !!v.kitId) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Exactly one of variantId or kitId must be set' });
   }
 });
 
-// Rebuild the online-payment URL for an already-created order (used on the
-// idempotent-retry path, where the original bill should be reused).
-function reconstructPaymentUrl(order: { paymentGateway: string | null; paymentRef: string | null }): string | undefined {
-  if (order.paymentGateway === 'toyyibpay' && order.paymentRef) {
-    const host = env.TOYYIBPAY_SANDBOX ? 'https://dev.toyyibpay.com' : 'https://toyyibpay.com';
-    return `${host}/${order.paymentRef}`;
-  }
-  return undefined; // Billplz bill URL isn't persisted; the customer must re-open from email
-}
+const createOrderSchema = z.object({
+  shippingAddressId: z.string(),
+  notes: z.string().optional(),
+  discountCode: z.string().optional(),
+  idempotencyKey: z.string().min(8).max(100).optional(),
+  // Attach an immediate online-gateway payment to this order (see decision #3
+  // in the task brief) — omitted/false means the order is billed later,
+  // against the company's credit terms, when it ships.
+  payNow: z.boolean().optional(),
+  items: z.array(orderItemInputSchema).min(1).max(50),
+});
 
-// P2002 field extraction mirrors error-handler.ts: the driver-adapter build
-// reports the violated constraint under meta.driverAdapterError, not meta.target.
-function isOrderNumberConflict(err: unknown): boolean {
+// P2002 field extraction mirrors error-handler.ts / quotations.controller.ts:
+// the driver-adapter build reports the violated constraint under
+// meta.driverAdapterError, not meta.target.
+function isFieldConflict(err: unknown, field: string): boolean {
   const meta = (err as { meta?: { target?: string | string[]; driverAdapterError?: { cause?: { constraint?: { fields?: string[] } } } } })?.meta;
   const fields = meta?.target ?? meta?.driverAdapterError?.cause?.constraint?.fields;
-  return Array.isArray(fields)
-    ? fields.includes('orderNumber')
-    : typeof fields === 'string' && fields.includes('orderNumber');
+  return Array.isArray(fields) ? fields.includes(field) : typeof fields === 'string' && fields.includes(field);
 }
 
-export async function createOrder(fastify: FastifyInstance, body: unknown) {
+const BATCH_SELLABLE_STATUSES = ['IN_STOCK', 'INCOMING'] as const;
+
+export async function createOrder(fastify: FastifyInstance, companyId: string, body: unknown) {
   const data = createOrderSchema.parse(body);
 
   // Idempotency: a network retry of a request the server already committed must
-  // NOT create a second order (double stock decrement + double bill = double
-  // charge). Return the original order instead.
+  // NOT create a second order. Return the original order instead. The unique
+  // constraint is global, but this endpoint is company-scoped, so a match
+  // belonging to a different company means two callers collided on the same
+  // key — that's a caller bug, not something to silently paper over by
+  // handing back someone else's order.
   if (data.idempotencyKey) {
-    const existing = await fastify.prisma.order.findUnique({
-      where: { idempotencyKey: data.idempotencyKey },
-    });
+    const existing = await fastify.prisma.order.findUnique({ where: { idempotencyKey: data.idempotencyKey } });
     if (existing) {
-      return { order: existing, paymentUrl: reconstructPaymentUrl(existing) };
+      if (existing.companyId !== companyId) {
+        throw { statusCode: 409, message: 'This idempotency key was already used by another request' };
+      }
+      return { order: existing };
     }
+  }
+
+  const company = await fastify.prisma.company.findUnique({ where: { id: companyId } });
+  if (!company) throw { statusCode: 404, message: 'Company not found' };
+
+  const address = await fastify.prisma.companyAddress.findUnique({ where: { id: data.shippingAddressId } });
+  if (!address || address.companyId !== companyId) {
+    throw { statusCode: 400, message: 'shippingAddressId does not belong to this company' };
   }
 
   const runCreateTransaction = () =>
     fastify.prisma.$transaction(async (tx) => {
-    // Server-side enforcement of "required" add-ons (e.g. Bac Water + syringes
-    // for a reconstitution-needing peptide): the storefront pre-checks and
-    // locks these, but a bypassed/buggy client must still not be able to ship
-    // a peptide without its required supplies. Required add-ons are
-    // configured on the parent Product (apply regardless of which of its own
-    // variants is purchased), so first resolve which parents were bought.
-    const purchasedVariants = await tx.productVariant.findMany({
-      where: { id: { in: data.items.map((i) => i.variantId) } },
-      select: { id: true, productId: true },
-    });
-    const parentIds = [...new Set(purchasedVariants.map((v) => v.productId))];
-    // Only add-ons that are themselves still purchasable (variant active AND
-    // its own parent active) get force-injected — otherwise a supply that
-    // gets discontinued/deactivated would permanently block checkout of
-    // every product that requires it, instead of just dropping out quietly.
-    const requiredRelations = await tx.productAddOn.findMany({
-      where: { productId: { in: parentIds }, required: true, addOn: { active: true, product: { active: true } } },
-    });
-    // For each required add-on, make sure the order includes at least the
-    // configured fixed quantity — this does NOT scale with how many units of
-    // the parent product were ordered, and if two purchased products both
-    // require the same add-on at different quantities, the larger of the
-    // two wins rather than summing.
-    const requiredMinByAddOnId = new Map<string, number>();
-    for (const rel of requiredRelations) {
-      requiredMinByAddOnId.set(rel.addOnId, Math.max(requiredMinByAddOnId.get(rel.addOnId) ?? 0, rel.quantity));
-    }
-    const items = data.items.map((i) => ({ ...i }));
-    for (const [addOnId, minQuantity] of requiredMinByAddOnId) {
-      const existing = items.find((i) => i.variantId === addOnId);
-      if (existing) {
-        existing.quantity = Math.max(existing.quantity, minQuantity);
-      } else {
-        items.push({ variantId: addOnId, quantity: minQuantity });
+      // Server-side enforcement of "required" add-ons (e.g. Bac Water +
+      // syringes for a reconstitution-needing peptide): the storefront
+      // pre-checks and locks these, but a bypassed/buggy client must still
+      // not be able to order a peptide without its required supplies.
+      // Required add-ons are configured on the parent Product and only apply
+      // to plain-variant lines — a kit is a pre-composed bundle, unrelated to
+      // ProductAddOn.
+      const variantItemIds = data.items.filter((i) => i.variantId).map((i) => i.variantId!);
+      const purchasedVariants = variantItemIds.length
+        ? await tx.productVariant.findMany({ where: { id: { in: variantItemIds } }, select: { id: true, productId: true } })
+        : [];
+      const parentIds = [...new Set(purchasedVariants.map((v) => v.productId))];
+      const requiredRelations = parentIds.length
+        ? await tx.productAddOn.findMany({
+            where: { productId: { in: parentIds }, required: true, addOn: { active: true, product: { active: true } } },
+          })
+        : [];
+      const requiredMinByAddOnId = new Map<string, number>();
+      for (const rel of requiredRelations) {
+        requiredMinByAddOnId.set(rel.addOnId, Math.max(requiredMinByAddOnId.get(rel.addOnId) ?? 0, rel.quantity));
       }
-    }
-
-    const variants = await tx.productVariant.findMany({
-      where: { id: { in: items.map((i) => i.variantId) }, active: true, product: { active: true } },
-      include: { product: { select: { name: true } } },
-    });
-
-    if (variants.length !== items.length) {
-      throw { statusCode: 400, message: 'One or more products not found or inactive' };
-    }
-
-    const variantMap = new Map(variants.map((v) => [v.id, v]));
-    // Captured once so subtotal and each stored unitPrice agree on whether a
-    // sale is active, even in the unlikely event a sale boundary is crossed
-    // mid-transaction.
-    const now = new Date();
-
-    for (const item of items) {
-      const variant = variantMap.get(item.variantId)!;
-      if (variant.stock < item.quantity) {
-        throw { statusCode: 400, message: `Insufficient stock for ${getVariantDisplayName(variant.product, variant)}` };
-      }
-    }
-
-    const subtotal = items.reduce((sum, item) => {
-      const variant = variantMap.get(item.variantId)!;
-      return sum + getEffectivePrice(variant, now) * item.quantity;
-    }, 0);
-
-    const shippingSetting = await tx.setting.findUnique({ where: { key: 'shipping_fee' } });
-    // Guard against a non-numeric/empty setting value: parseFloat("") is NaN,
-    // and NaN would propagate into total and the gateway amount.
-    const shippingParsed = shippingSetting ? parseFloat(shippingSetting.value) : 0;
-    const shippingFee = Number.isFinite(shippingParsed) && shippingParsed > 0 ? Math.round(shippingParsed * 100) : 0;
-
-    let discountAmount = 0;
-    let discountCodeId: string | undefined;
-    if (data.discountCode) {
-      const result = await validateDiscountCode(fastify, data.discountCode, subtotal);
-      discountAmount = result.discountAmount;
-      discountCodeId = result.discount.id;
-      // Atomically reserve one use so concurrent orders can't push a capped code
-      // past maxUses (the read-based check above is racy on its own).
-      if (result.discount.maxUses != null) {
-        const reserved = await tx.discountCode.updateMany({
-          where: { id: discountCodeId, usedCount: { lt: result.discount.maxUses } },
-          data: { usedCount: { increment: 1 } },
-        });
-        if (reserved.count === 0) {
-          throw { statusCode: 400, message: 'This discount code has reached its usage limit' };
+      const items = data.items.map((i) => ({ ...i }));
+      for (const [addOnId, minQuantity] of requiredMinByAddOnId) {
+        const existingItem = items.find((i) => i.variantId === addOnId);
+        if (existingItem) {
+          existingItem.quantity = Math.max(existingItem.quantity, minQuantity);
+        } else {
+          items.push({ variantId: addOnId, quantity: minQuantity });
         }
-      } else {
-        await tx.discountCode.update({
-          where: { id: discountCodeId },
-          data: { usedCount: { increment: 1 } },
+      }
+
+      const allVariantIds = [...new Set(items.filter((i) => i.variantId).map((i) => i.variantId!))];
+      const kitIds = [...new Set(items.filter((i) => i.kitId).map((i) => i.kitId!))];
+
+      const [variants, kits] = await Promise.all([
+        allVariantIds.length
+          ? tx.productVariant.findMany({
+              where: { id: { in: allVariantIds }, active: true, product: { active: true } },
+              include: { product: { select: { name: true } }, priceTiers: true },
+            })
+          : Promise.resolve([]),
+        kitIds.length
+          ? tx.kit.findMany({ where: { id: { in: kitIds }, active: true }, include: { items: true } })
+          : Promise.resolve([]),
+      ]);
+
+      const variantMap = new Map(variants.map((v) => [v.id, v]));
+      const kitMap = new Map(kits.map((k) => [k.id, k]));
+
+      for (const item of items) {
+        if (item.variantId && !variantMap.has(item.variantId)) {
+          throw { statusCode: 400, message: `Product variant ${item.variantId} not found or inactive` };
+        }
+        if (item.kitId && !kitMap.has(item.kitId)) {
+          throw { statusCode: 400, message: `Kit ${item.kitId} not found or inactive` };
+        }
+      }
+
+      // Stock check (sanity-check only — nothing is reserved/decremented
+      // here; see rule #1: actual decrement happens at ShipmentItem
+      // creation). A variant with NO batches at all falls back to the legacy
+      // flat ProductVariant.stock field — mixed catalog, some SKUs are
+      // batch/campaign-driven, some are simple always-available items.
+      const neededVariantIds = new Set<string>(allVariantIds);
+      for (const kitId of kitIds) {
+        for (const ki of kitMap.get(kitId)!.items) neededVariantIds.add(ki.variantId);
+      }
+      const batchSums = neededVariantIds.size
+        ? await tx.batch.groupBy({
+            by: ['variantId'],
+            where: { variantId: { in: [...neededVariantIds] }, status: { in: [...BATCH_SELLABLE_STATUSES] } },
+            _sum: { quantity: true },
+          })
+        : [];
+      // A variant with at least one batch row (even one summing to 0, fully
+      // depleted) is batch-driven — only a variant with NO rows at all falls
+      // back to the flat stock field.
+      const batchRowVariantIds = new Set(batchSums.map((b) => b.variantId));
+      const availableByVariant = new Map(batchSums.map((b) => [b.variantId, b._sum.quantity ?? 0]));
+
+      function available(variantId: string, fallbackStock: number): number {
+        if (batchRowVariantIds.has(variantId)) return availableByVariant.get(variantId) ?? 0;
+        return fallbackStock;
+      }
+
+      for (const item of items) {
+        if (item.variantId) {
+          const variant = variantMap.get(item.variantId)!;
+          if (item.quantity < variant.moq) {
+            throw { statusCode: 400, message: `${getVariantDisplayName(variant.product, variant)} has a minimum order quantity of ${variant.moq}` };
+          }
+          const avail = available(item.variantId, variant.stock);
+          if (avail < item.quantity) {
+            throw { statusCode: 400, message: `Insufficient stock for ${getVariantDisplayName(variant.product, variant)} (requested ${item.quantity}, available ${avail})` };
+          }
+        } else if (item.kitId) {
+          const kit = kitMap.get(item.kitId)!;
+          for (const ki of kit.items) {
+            const required = ki.quantity * item.quantity;
+            const componentVariant = variantMap.get(ki.variantId);
+            const fallbackStock = componentVariant?.stock ?? 0;
+            const avail = available(ki.variantId, fallbackStock);
+            if (avail < required) {
+              throw { statusCode: 400, message: `Insufficient stock for "${kit.name}" — one of its components is short (requested ${required}, available ${avail})` };
+            }
+          }
+        }
+      }
+
+      const now = new Date();
+      const subtotal = items.reduce((sum, item) => {
+        if (item.variantId) {
+          return sum + getTieredUnitPrice(variantMap.get(item.variantId)!, item.quantity, now) * item.quantity;
+        }
+        return sum + kitMap.get(item.kitId!)!.pricePerKit * item.quantity;
+      }, 0);
+
+      const shippingSetting = await tx.setting.findUnique({ where: { key: 'shipping_fee' } });
+      const shippingParsed = shippingSetting ? parseFloat(shippingSetting.value) : 0;
+      const shippingFee = Number.isFinite(shippingParsed) && shippingParsed > 0 ? Math.round(shippingParsed * 100) : 0;
+
+      let discountAmount = 0;
+      let discountCodeId: string | undefined;
+      if (data.discountCode) {
+        const result = await validateDiscountCode(fastify, data.discountCode, subtotal);
+        discountAmount = result.discountAmount;
+        discountCodeId = result.discount.id;
+        if (result.discount.maxUses != null) {
+          const reserved = await tx.discountCode.updateMany({
+            where: { id: discountCodeId, usedCount: { lt: result.discount.maxUses } },
+            data: { usedCount: { increment: 1 } },
+          });
+          if (reserved.count === 0) {
+            throw { statusCode: 400, message: 'This discount code has reached its usage limit' };
+          }
+        } else {
+          await tx.discountCode.update({ where: { id: discountCodeId }, data: { usedCount: { increment: 1 } } });
+        }
+      }
+
+      const total = Math.max(subtotal + shippingFee - discountAmount, 0);
+      const orderNumber = await generateOrderNumber(tx);
+
+      const created = await tx.order.create({
+        data: {
+          orderNumber,
+          companyId,
+          shippingAddressId: data.shippingAddressId,
+          subtotal,
+          shippingFee,
+          discountAmount,
+          discountCodeId,
+          total,
+          notes: data.notes,
+          idempotencyKey: data.idempotencyKey,
+          items: {
+            create: items.map((item) => ({
+              variantId: item.variantId,
+              kitId: item.kitId,
+              quantity: item.quantity,
+              unitPrice: item.variantId
+                ? getTieredUnitPrice(variantMap.get(item.variantId)!, item.quantity, now)
+                : kitMap.get(item.kitId!)!.pricePerKit,
+            })),
+          },
+        },
+        include: { items: true },
+      });
+
+      await tx.orderStatusHistory.create({ data: { orderId: created.id, status: 'PENDING' } });
+
+      // Same-transaction outbox insert — the confirmation email exists iff
+      // the order does. Actual sending happens in the background email worker.
+      await enqueueEmail(tx, created, 'ORDER_CONFIRMATION', company.email);
+
+      // Pay-now: create the Invoice now (so it commits atomically with the
+      // order), but with NO InvoiceItems — see decision #3. A real Invoice
+      // for this order's line items can only be raised once something has
+      // actually shipped (InvoiceItem.shipmentItemId is required+unique), and
+      // nothing has at order-creation time. `total` is set directly instead.
+      //
+      // KNOWN GAP: this Invoice has no FK back to `created` (Invoice belongs
+      // to Company, not Order, per the ERD's shipment/invoice decoupling) —
+      // there is nothing stopping a LATER shipment-triggered invoice for this
+      // same order's items from being raised on top of this one, double
+      // billing on paper. Not solved here; see admin-invoices.controller.ts.
+      let invoice: { id: string; invoiceNumber: string } | undefined;
+      if (data.payNow) {
+        const invoiceNumber = await generateInvoiceNumber(tx);
+        invoice = await tx.invoice.create({
+          data: { invoiceNumber, companyId, issueDate: now, dueDate: now, total },
+          select: { id: true, invoiceNumber: true },
         });
       }
-    }
 
-    const total = Math.max(subtotal + shippingFee - discountAmount, 0);
-    const orderNumber = await generateOrderNumber(tx);
-
-    const created = await tx.order.create({
-      data: {
-        orderNumber,
-        customerName: data.customerName,
-        phone: data.phone,
-        email: data.email,
-        address: data.address,
-        city: data.city,
-        state: data.state,
-        postcode: data.postcode,
-        subtotal,
-        shippingFee,
-        discountAmount,
-        total,
-        paymentMethod: data.paymentMethod,
-        discountCodeId,
-        notes: data.notes,
-        idempotencyKey: data.idempotencyKey,
-        items: {
-          create: items.map((item) => ({
-            variantId: item.variantId,
-            quantity: item.quantity,
-            unitPrice: getEffectivePrice(variantMap.get(item.variantId)!, now),
-          })),
-        },
-      },
-      include: { items: { include: { variant: { include: { product: true } } } } },
-    });
-
-    // Same-transaction outbox insert — the confirmation email exists iff the
-    // order does. Actual sending happens in the background email worker.
-    await enqueueEmail(tx, created, 'ORDER_CONFIRMATION');
-
-    // Conditional decrement guards against oversell under concurrency: the
-    // WHERE clause only matches if enough stock remains, so two simultaneous
-    // orders for the last unit can't both succeed. A miss rolls back the tx.
-    for (const item of items) {
-      const dec = await tx.productVariant.updateMany({
-        where: { id: item.variantId, stock: { gte: item.quantity } },
-        data: { stock: { decrement: item.quantity } },
-      });
-      if (dec.count === 0) {
-        const variant = variantMap.get(item.variantId)!;
-        throw { statusCode: 400, message: `Insufficient stock for ${getVariantDisplayName(variant.product, variant)}` };
-      }
-    }
-
-      return created;
+      return { order: created, invoice };
     }, { timeout: 15000, maxWait: 5000 });
 
-  let order;
-  // Order-number generation is read-max-then-increment with no lock, so two
-  // concurrent orders can compute the same number — the loser hits the unique
-  // constraint and regenerates on a fresh attempt.
+  let result;
   const MAX_ATTEMPTS = 3;
   for (let attempt = 1; ; attempt++) {
     try {
-      order = await runCreateTransaction();
+      result = await runCreateTransaction();
       break;
     } catch (err) {
       const code = (err as { code?: string })?.code;
-      // Lost the idempotency-key race: a concurrent request with the same key
-      // already created the order. Return that one instead of erroring.
       if (data.idempotencyKey && code === 'P2002') {
-        const existing = await fastify.prisma.order.findUnique({
-          where: { idempotencyKey: data.idempotencyKey },
-        });
-        if (existing) return { order: existing, paymentUrl: reconstructPaymentUrl(existing) };
+        const existing = await fastify.prisma.order.findUnique({ where: { idempotencyKey: data.idempotencyKey } });
+        if (existing && existing.companyId === companyId) return { order: existing };
       }
-      if (code === 'P2002' && attempt < MAX_ATTEMPTS && isOrderNumberConflict(err)) continue;
+      if (code === 'P2002' && attempt < MAX_ATTEMPTS && (isFieldConflict(err, 'orderNumber') || isFieldConflict(err, 'invoiceNumber'))) continue;
       throw err;
     }
   }
 
-  let whatsappUrl: string | undefined;
+  const { order, invoice } = result;
   let paymentUrl: string | undefined;
 
-  if (data.paymentMethod === 'WHATSAPP') {
-    whatsappUrl = buildWhatsAppUrl({
-      orderNumber: order.orderNumber,
-      items: order.items.map((item) => ({
-        name: getVariantDisplayName(item.variant.product, item.variant),
-        quantity: item.quantity,
-        unitPrice: item.unitPrice,
-      })),
-      subtotal: order.subtotal,
-      shippingFee: order.shippingFee,
-      discountAmount: order.discountAmount,
-      total: order.total,
-      customerName: order.customerName,
-      phone: order.phone,
-      address: order.address,
-      city: order.city,
-      state: order.state,
-      postcode: order.postcode,
-    });
-  } else if (data.paymentMethod === 'BILLPLZ') {
-    // Payment gateways enforce a minimum charge (RM1). A total below that
-    // (e.g. a near-100% discount) can't be billed online.
+  if (data.payNow && invoice) {
+    // Payment gateways enforce a minimum charge (RM1).
     if (order.total < 100) {
-      throw { statusCode: 400, message: 'Order total is too low for online payment. Please use WhatsApp checkout.' };
+      throw { statusCode: 400, message: 'Order total is too low for online payment.' };
     }
-    const settings = await fastify.prisma.setting.findMany({
-      where: { key: { in: ['payment_gateway'] } },
-    });
-    const gatewayName = settings.find(s => s.key === 'payment_gateway')?.value || 'billplz';
+    const settings = await fastify.prisma.setting.findMany({ where: { key: { in: ['payment_gateway'] } } });
+    const gatewayName = settings.find((s) => s.key === 'payment_gateway')?.value || 'billplz';
     const gateway = getActiveGateway(gatewayName);
 
     if (gateway) {
       const bill = await gateway.createBill({
-        name: order.customerName,
-        email: order.email || undefined,
-        phone: order.phone,
+        name: company.contactName,
+        email: company.email,
+        phone: company.phone,
         amount: order.total,
         description: `ASCEND Order ${order.orderNumber}`,
-        orderNumber: order.orderNumber,
+        invoiceNumber: invoice.invoiceNumber,
         orderId: order.id,
       });
-
-      await fastify.prisma.order.update({
-        where: { id: order.id },
-        data: { paymentRef: bill.billId, paymentGateway: bill.gateway },
-      });
-
       paymentUrl = bill.paymentUrl;
     }
   }
 
-  return { order, whatsappUrl, paymentUrl };
+  return { order, paymentUrl };
 }
 
-export async function lookupOrders(fastify: FastifyInstance, phone: string, orderNumber: string) {
-  // BOTH identifiers are required: an order number alone is guessable
-  // (sequential ASCyymm/NNNN format), and a phone alone would enumerate every
-  // order for a guessed number. The phone acts as the shared secret, matched
-  // the same way the receipt endpoint does.
-  const normalizedPhone = phone ? normalizePhone(phone) : '';
-  const hasPhone = normalizedPhone.length >= 10;
-  const hasOrderNumber = !!orderNumber && orderNumber.trim().length >= 3;
+export async function listMyOrders(fastify: FastifyInstance, companyId: string, query: Record<string, string>) {
+  const { page, limit, skip } = getPaginationParams(query);
+  const where: Record<string, unknown> = { companyId, deletedAt: null };
+  if (query.status) where.status = query.status;
 
-  if (!hasPhone || !hasOrderNumber) {
-    throw { statusCode: 400, message: 'Please enter your order number and phone number' };
-  }
+  const [orders, total] = await Promise.all([
+    fastify.prisma.order.findMany({
+      where,
+      include: {
+        items: { include: { variant: { select: { code: true, size: true, product: { select: { name: true } } } }, kit: { select: { name: true } } } },
+        shippingAddress: true,
+      },
+      orderBy: { createdAt: 'desc' },
+      skip,
+      take: limit,
+    }),
+    fastify.prisma.order.count({ where }),
+  ]);
 
-  // Return only what the tracking UI needs — never the customer's address,
-  // email, name, or notes.
-  const orders = await fastify.prisma.order.findMany({
-    where: {
-      orderNumber: orderNumber.trim().toUpperCase(),
-      deletedAt: null,
-    },
-    select: {
-      id: true,
-      orderNumber: true,
-      // Fetched only for the ownership check below — stripped before returning.
-      phone: true,
-      status: true,
-      total: true,
-      trackingNumber: true,
-      createdAt: true,
-      items: {
-        select: {
-          id: true,
-          quantity: true,
-          unitPrice: true,
-          variant: {
-            select: { code: true, size: true, imageUrl: true, product: { select: { name: true } } },
+  return paginatedResponse(orders, total, page, limit);
+}
+
+export async function getMyOrder(fastify: FastifyInstance, companyId: string, id: string) {
+  const order = await fastify.prisma.order.findUnique({
+    where: { id },
+    include: {
+      items: { include: { variant: { include: { product: true } }, kit: true } },
+      shippingAddress: true,
+      discountCode: { select: { code: true, discountType: true, discountValue: true } },
+      // Nested batch + orderItem info here (not just the bare ShipmentItem
+      // row) is what powers the frontend's Files tab (Batch.coaUrl per
+      // shipment item — no separate document table, per docs/erd-b2b.md) and
+      // the per-line display on the Shipments tab.
+      shipments: {
+        include: {
+          items: {
+            include: {
+              batch: { select: { batchNumber: true, expiry: true, coaUrl: true } },
+              orderItem: {
+                include: {
+                  variant: { select: { code: true, size: true, product: { select: { name: true } } } },
+                  kit: { select: { name: true } },
+                },
+              },
+            },
           },
         },
       },
+      statusHistory: { orderBy: { changedAt: 'asc' } },
     },
-    orderBy: { createdAt: 'desc' },
-    take: 10,
   });
-
-  // A wrong phone gets the identical empty result as a nonexistent order —
-  // no oracle for probing which order numbers exist.
-  return orders
-    .filter((o) => normalizePhone(o.phone) === normalizedPhone)
-    .map(({ phone: _phone, ...rest }) => rest);
+  // Same as everywhere else a company can look up its own resource: 404 (not
+  // 403) when it belongs to someone else, so existence isn't leaked.
+  if (!order || order.companyId !== companyId) {
+    throw { statusCode: 404, message: 'Order not found' };
+  }
+  return order;
 }

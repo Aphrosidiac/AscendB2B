@@ -529,7 +529,7 @@ function EmailContentSettings({ token, onSaved }: { token: string | null; onSave
 function TemplatePreview({ token, refreshKey }: { token: string | null; refreshKey: number }) {
   const [type, setType] = useState<'ORDER_CONFIRMATION' | 'PAYMENT_RECEIPT'>('ORDER_CONFIRMATION');
   const [orderId, setOrderId] = useState(''); // '' = latest order
-  const [orders, setOrders] = useState<{ id: string; orderNumber: string; customerName: string }[]>([]);
+  const [orders, setOrders] = useState<{ id: string; orderNumber: string; companyName: string }[]>([]);
   const [preview, setPreview] = useState<{ subject: string; html: string } | null>(null);
   const [previewError, setPreviewError] = useState(false);
 
@@ -540,7 +540,7 @@ function TemplatePreview({ token, refreshKey }: { token: string | null; refreshK
   useEffect(() => {
     if (!token) return;
     adminGetOrders(token, { limit: '20' })
-      .then((r) => setOrders(r.data.map((o) => ({ id: o.id, orderNumber: o.orderNumber, customerName: o.customerName }))))
+      .then((r) => setOrders(r.data.map((o) => ({ id: o.id, orderNumber: o.orderNumber, companyName: o.company.name }))))
       .catch(() => {});
   }, [token]);
 
@@ -597,7 +597,7 @@ function TemplatePreview({ token, refreshKey }: { token: string | null; refreshK
         >
           <option value="">Latest order</option>
           {orders.map((o) => (
-            <option key={o.id} value={o.id}>{o.orderNumber} — {o.customerName}</option>
+            <option key={o.id} value={o.id}>{o.orderNumber} — {o.companyName}</option>
           ))}
         </select>
         <div className="flex items-center gap-2 sm:ml-auto">

@@ -28,7 +28,17 @@ import paymentRoutes from './modules/payments/payments.routes.js';
 import insightRoutes from './modules/insights/insights.routes.js';
 import adminInsightRoutes from './modules/admin/admin-insights.routes.js';
 import resendWebhookRoutes from './modules/webhooks/resend-webhook.routes.js';
-import { reconcileStaleOrders } from './utils/payment-reconcile.js';
+import companyRoutes from './modules/companies/companies.routes.js';
+import companyAddressRoutes from './modules/companies/company-addresses.routes.js';
+import companyInvoiceRoutes from './modules/companies/company-invoices.routes.js';
+import quotationRoutes from './modules/quotations/quotations.routes.js';
+import adminQuotationRoutes from './modules/admin/admin-quotations.routes.js';
+import adminShipmentRoutes from './modules/admin/admin-shipments.routes.js';
+import adminInvoiceRoutes from './modules/admin/admin-invoices.routes.js';
+import adminCampaignRoutes from './modules/admin/admin-campaigns.routes.js';
+import adminBatchRoutes from './modules/admin/admin-batches.routes.js';
+import adminKitRoutes from './modules/admin/admin-kits.routes.js';
+import adminCompanyRoutes from './modules/admin/admin-companies.routes.js';
 import { processEmailOutbox } from './utils/email-worker.js';
 
 const fastify = Fastify({
@@ -99,6 +109,17 @@ await fastify.register(adminDiscountRoutes, { prefix: '/api/v1/admin/discounts' 
 await fastify.register(paymentRoutes, { prefix: '/api/v1/payments' });
 await fastify.register(insightRoutes, { prefix: '/api/v1/insights' });
 await fastify.register(adminInsightRoutes, { prefix: '/api/v1/admin/insights' });
+await fastify.register(companyRoutes, { prefix: '/api/v1/companies' });
+await fastify.register(companyAddressRoutes, { prefix: '/api/v1/companies/addresses' });
+await fastify.register(companyInvoiceRoutes, { prefix: '/api/v1/companies/invoices' });
+await fastify.register(quotationRoutes, { prefix: '/api/v1/quotations' });
+await fastify.register(adminQuotationRoutes, { prefix: '/api/v1/admin/quotations' });
+await fastify.register(adminShipmentRoutes, { prefix: '/api/v1/admin/shipments' });
+await fastify.register(adminInvoiceRoutes, { prefix: '/api/v1/admin/invoices' });
+await fastify.register(adminCampaignRoutes, { prefix: '/api/v1/admin/campaigns' });
+await fastify.register(adminBatchRoutes, { prefix: '/api/v1/admin/batches' });
+await fastify.register(adminKitRoutes, { prefix: '/api/v1/admin/kits' });
+await fastify.register(adminCompanyRoutes, { prefix: '/api/v1/admin/companies' });
 // Public — Resend's servers call this directly (see the route file for why
 // it needs its own scoped raw-body content-type parser). The global rate
 // limiter above still applies fine as-is.
@@ -108,33 +129,19 @@ try {
   await fastify.listen({ port: env.PORT, host: env.HOST });
   fastify.log.info(`ASCEND API running on http://${env.HOST}:${env.PORT}`);
 
-  // Reconcile stale online-payment orders: confirm any whose callback was
-  // missed, and release stock held by abandoned/never-paid orders.
-  //
   // This deployment only ever runs each app as a single PM2 fork instance
   // (never cluster mode — see the bcryptjs+cluster note elsewhere in this
-  // codebase), so there is inherently only one process to run these
-  // intervals on; no "primary instance" guard is needed.
+  // codebase), so there is inherently only one process to run this
+  // interval on; no "primary instance" guard is needed.
   //
-  // A previous version of this guard checked `pm_id === '0'`/
-  // `NODE_APP_INSTANCE === '0'` to skip extra copies in a hypothetical
-  // cluster-mode future. That check was actually silently broken in
-  // production the whole time it existed: this server runs six unrelated
-  // PM2 apps under one shared daemon, and pm_id/NODE_APP_INSTANCE are
-  // apparently assigned from a value tied to that daemon-wide process
-  // count, not one scoped per app name — ascend-api's pm_id was 2, never
-  // 0. The guard was therefore always false here, and both intervals below
-  // silently never ran. If cluster mode is ever introduced for a specific
-  // app, reintroduce a guard then — using something that actually
-  // identifies "am I cluster worker 0 of THIS app" (e.g. Node's own
-  // `cluster.isPrimary`), not a raw pm_id/NODE_APP_INSTANCE comparison.
-  const RECONCILE_INTERVAL_MS = 10 * 60 * 1000;
-  const timer = setInterval(() => {
-    reconcileStaleOrders(fastify).catch((err) =>
-      fastify.log.error({ err }, 'payment reconcile sweep failed')
-    );
-  }, RECONCILE_INTERVAL_MS);
-  timer.unref();
+  // NOTE: the old B2C stale-order reconcile sweep (re-querying the gateway
+  // for orders stuck UNPAID, releasing stock held by abandoned checkouts) is
+  // gone, not just unwired — it can't be reconstructed under the B2B schema.
+  // Nothing is reserved at order-creation time anymore (see rule #1 in
+  // orders.controller.ts), so there's no stock to release, and neither Order
+  // nor Invoice persists a pending gateway bill reference to sweep against
+  // in the first place (see payment-reconcile.ts). The redirect/webhook
+  // handlers in payments.controller.ts are the only confirmation path now.
 
   // Drain the transactional-email outbox (order confirmations / payment
   // receipts queued by state changes). No-op until emails_enabled is set.

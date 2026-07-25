@@ -1,55 +1,50 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { createOrder, lookupOrders } from './orders.controller.js';
-import { getReceiptData, getReceiptPdf } from './receipt.controller.js';
+import { createOrder, listMyOrders, getMyOrder } from './orders.controller.js';
+import { getMyReceiptData, getMyReceiptPdf } from './receipt.controller.js';
 import { validateDiscountCode } from '../admin/admin-discounts.controller.js';
-
-// Both identifiers are mandatory — the phone is the ownership proof for the
-// (guessable, sequential) order number.
-const lookupQuerySchema = z.object({
-  phone: z.string().min(1),
-  orderNumber: z.string().min(1),
-});
 
 const validateDiscountSchema = z.object({
   code: z.string().min(1),
   subtotal: z.number().int().min(0),
 });
 
+// Every route here is a Company acting on its own orders — the old
+// guest/phone-based checkout and lookup are gone entirely (B2B requires a
+// signed-in Company to transact at all; see docs/erd-b2b.md).
 export default async function orderRoutes(fastify: FastifyInstance) {
+  fastify.addHook('preHandler', fastify.authenticateCompany);
+
   fastify.post(
     '/',
     { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } },
     async (request) => {
-      return createOrder(fastify, request.body);
+      return createOrder(fastify, request.user.id, request.body);
     }
   );
 
-  fastify.get(
-    '/lookup',
+  fastify.get('/', async (request) => {
+    return listMyOrders(fastify, request.user.id, request.query as Record<string, string>);
+  });
+
+  fastify.get<{ Params: { id: string } }>('/:id', async (request) => {
+    return getMyOrder(fastify, request.user.id, request.params.id);
+  });
+
+  fastify.get<{ Params: { id: string } }>(
+    '/:id/receipt',
     { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
     async (request) => {
-      const { phone, orderNumber } = lookupQuerySchema.parse(request.query);
-      return lookupOrders(fastify, phone, orderNumber);
+      return getMyReceiptData(fastify, request.user.id, request.params.id);
     }
   );
 
-  fastify.get<{ Params: { orderNumber: string } }>(
-    '/receipt/:orderNumber',
-    { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
-    async (request) => {
-      const { phone } = request.query as { phone: string };
-      return getReceiptData(fastify, request.params.orderNumber, phone || '');
-    }
-  );
-
-  fastify.get<{ Params: { orderNumber: string } }>(
-    '/receipt/:orderNumber/pdf',
+  fastify.get<{ Params: { id: string } }>(
+    '/:id/receipt/pdf',
     { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
     async (request, reply) => {
-      const { phone } = request.query as { phone: string };
-      const pdf = await getReceiptPdf(fastify, request.params.orderNumber, phone || '');
-      const safeFilename = request.params.orderNumber.replace(/[^a-zA-Z0-9\-_\/]/g, '').replace(/\//g, '-');
+      const { order, pdf } = await getMyReceiptPdf(fastify, request.user.id, request.params.id);
+      const safeFilename = order.orderNumber.replace(/[^a-zA-Z0-9\-_\/]/g, '').replace(/\//g, '-');
       reply.header('Content-Type', 'application/pdf');
       reply.header('Content-Disposition', `inline; filename="ASCEND-Receipt-${safeFilename}.pdf"`);
       reply.header('Referrer-Policy', 'no-referrer');

@@ -22,3 +22,27 @@ export function isSaleActive(product: SalePricing, now: Date = new Date()): bool
 export function getEffectivePrice(product: SalePricing, now: Date = new Date()): number {
   return isSaleActive(product, now) ? product.salePrice! : product.price;
 }
+
+export interface PriceTierLike {
+  minQty: number;
+  unitPrice: number;
+}
+
+// B2B quantity-break pricing: the row with the highest minQty <= the
+// requested quantity wins (see PriceTier in schema.prisma). A matching tier
+// takes priority over a time-limited sale price — a negotiated/bulk tier
+// price is assumed to already be the better deal; there's no schema signal to
+// compare the two and pick the lower, so tier > sale is a deliberate,
+// documented choice rather than an oversight.
+export function getTieredUnitPrice(
+  variant: SalePricing & { priceTiers?: PriceTierLike[] },
+  quantity: number,
+  now: Date = new Date()
+): number {
+  const tiers = variant.priceTiers ?? [];
+  let best: PriceTierLike | undefined;
+  for (const tier of tiers) {
+    if (tier.minQty <= quantity && (!best || tier.minQty > best.minQty)) best = tier;
+  }
+  return best ? best.unitPrice : getEffectivePrice(variant, now);
+}

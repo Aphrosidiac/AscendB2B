@@ -5,8 +5,8 @@ import { createPortal } from 'react-dom';
 import { ShoppingCart, Check } from 'lucide-react';
 import { useCart } from '@/lib/cart';
 import { Button } from '@/components/ui/Button';
-import { formatPrice, getEffectivePrice, getVariantDisplayName, isSaleActive } from '@/lib/utils';
-import type { AddOnVariant } from '@/types';
+import { formatPrice, getEffectivePrice, getTieredPrice, getVariantDisplayName, isSaleActive } from '@/lib/utils';
+import type { AddOnVariant, PriceTier } from '@/types';
 
 interface Props {
   variantId: string;
@@ -16,12 +16,16 @@ interface Props {
   price: number;
   imageUrl: string | null;
   stock: number;
+  // Purchase floor — the quantity stepper can't go below this (defaults to 1
+  // for variants with no explicit MOQ set).
+  moq?: number;
+  priceTiers?: PriceTier[];
   addOns?: AddOnVariant[];
   addOnReminder?: string | null;
 }
 
-export function AddToCartPanel({ variantId, code, name, size, price, imageUrl, stock, addOns, addOnReminder }: Props) {
-  const [quantity, setQuantity] = useState(1);
+export function AddToCartPanel({ variantId, code, name, size, price, imageUrl, stock, moq = 1, priceTiers, addOns, addOnReminder }: Props) {
+  const [quantity, setQuantity] = useState(Math.max(1, moq));
   const [added, setAdded] = useState(false);
   const [inlineButtonVisible, setInlineButtonVisible] = useState(true);
   const [mounted, setMounted] = useState(false);
@@ -49,8 +53,18 @@ export function AddToCartPanel({ variantId, code, name, size, price, imageUrl, s
     return () => observer.disconnect();
   }, []);
 
+  // Live unit price for the currently-selected quantity — display only
+  // (see getTieredPrice's docstring); the actual order total is always
+  // recomputed server-side at checkout.
+  const unitPrice = getTieredPrice(priceTiers, quantity, price);
+
   const handleAddToCart = () => {
     addItem({
+      // `price` here is the base/sale-effective unit price (NOT unitPrice) —
+      // the cart must keep this fixed so getTieredPrice can re-derive the
+      // right tier as the cart quantity changes later (e.g. dropping back
+      // below a tier's minQty must fall back to this base price, not freeze
+      // at whatever tier was active at add-to-cart time).
       variantId,
       code,
       name,
@@ -58,6 +72,8 @@ export function AddToCartPanel({ variantId, code, name, size, price, imageUrl, s
       price,
       quantity,
       stock,
+      moq,
+      priceTiers,
       imageUrl,
     });
     for (const addOn of addOns ?? []) {
@@ -132,32 +148,38 @@ export function AddToCartPanel({ variantId, code, name, size, price, imageUrl, s
         </div>
       )}
 
-      <div ref={inlineButtonRef} className="flex items-center gap-4 pt-4">
-        <div className="flex items-center border border-border rounded-lg">
-          <button
-            onClick={() => setQuantity(Math.max(1, quantity - 1))}
-            className="px-3 py-2 min-w-11 min-h-11 flex items-center justify-center text-text-secondary hover:text-text-primary cursor-pointer"
-            aria-label="Decrease quantity"
-          >
-            -
-          </button>
-          <span className="px-4 py-2 font-medium min-w-[3rem] text-center">{quantity}</span>
-          <button
-            onClick={() => setQuantity((q) => Math.min(stock, q + 1))}
-            disabled={quantity >= stock}
-            className="px-3 py-2 min-w-11 min-h-11 flex items-center justify-center text-text-secondary hover:text-text-primary cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-            aria-label="Increase quantity"
-          >
-            +
-          </button>
+      <div ref={inlineButtonRef} className="pt-4 space-y-2">
+        {unitPrice !== price && (
+          <p className="text-sm text-success font-medium">{formatPrice(unitPrice)}/unit at this quantity</p>
+        )}
+        <div className="flex items-center gap-4">
+          <div className="flex items-center border border-border rounded-lg">
+            <button
+              onClick={() => setQuantity((q) => Math.max(moq, q - 1))}
+              disabled={quantity <= moq}
+              className="px-3 py-2 min-w-11 min-h-11 flex items-center justify-center text-text-secondary hover:text-text-primary cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              aria-label="Decrease quantity"
+            >
+              -
+            </button>
+            <span className="px-4 py-2 font-medium min-w-[3rem] text-center">{quantity}</span>
+            <button
+              onClick={() => setQuantity((q) => Math.min(stock, q + 1))}
+              disabled={quantity >= stock}
+              className="px-3 py-2 min-w-11 min-h-11 flex items-center justify-center text-text-secondary hover:text-text-primary cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              aria-label="Increase quantity"
+            >
+              +
+            </button>
+          </div>
+          <Button onClick={handleAddToCart} disabled={stock === 0 || quantity > stock || quantity < moq} size="lg" className="flex-1">
+            {added ? (
+              <><Check className="w-4 h-4" /> Added</>
+            ) : (
+              <><ShoppingCart className="w-4 h-4" /> Add to Cart</>
+            )}
+          </Button>
         </div>
-        <Button onClick={handleAddToCart} disabled={stock === 0 || quantity > stock} size="lg" className="flex-1">
-          {added ? (
-            <><Check className="w-4 h-4" /> Added</>
-          ) : (
-            <><ShoppingCart className="w-4 h-4" /> Add to Cart</>
-          )}
-        </Button>
       </div>
 
       {/* Mobile-only sticky CTA — keeps Add to Cart reachable once the inline
@@ -169,8 +191,8 @@ export function AddToCartPanel({ variantId, code, name, size, price, imageUrl, s
       {mounted && !inlineButtonVisible && stock > 0 &&
         createPortal(
           <div className="sm:hidden fixed bottom-0 inset-x-0 z-40 bg-surface border-t border-border p-3 flex items-center gap-3 shadow-[0_-4px_12px_rgba(0,0,0,0.08)]">
-            <span className="font-display font-bold text-base shrink-0">{formatPrice(price)}</span>
-            <Button onClick={handleAddToCart} size="lg" className="flex-1">
+            <span className="font-display font-bold text-base shrink-0">{formatPrice(unitPrice)}</span>
+            <Button onClick={handleAddToCart} disabled={quantity < moq} size="lg" className="flex-1">
               {added ? (
                 <><Check className="w-4 h-4" /> Added</>
               ) : (

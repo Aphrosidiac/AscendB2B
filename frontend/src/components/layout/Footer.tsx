@@ -30,7 +30,7 @@ export function Footer() {
               <h4 className="font-semibold text-sm mb-3 uppercase tracking-wider text-neutral-400">Shop</h4>
               <div className="space-y-2">
                 <Link href="/products" className="block text-sm text-neutral-300 hover:text-white transition-colors">Products</Link>
-                <Link href="/track" className="block text-sm text-neutral-300 hover:text-white transition-colors">Track Order</Link>
+                <Link href="/account/orders" className="block text-sm text-neutral-300 hover:text-white transition-colors">My Orders</Link>
                 <Link href="/about" className="block text-sm text-neutral-300 hover:text-white transition-colors">About</Link>
               </div>
             </div>

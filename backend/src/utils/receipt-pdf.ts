@@ -5,31 +5,38 @@ import { getVariantDisplayName } from './product-addons.js';
 interface ReceiptItem {
   quantity: number;
   unitPrice: number;
-  variant: { code: string; size: string | null; product: { name: string } };
+  // variantId/kitId are mutually exclusive on OrderItem — one of these is set.
+  variant: { code: string; size: string | null; product: { name: string } } | null;
+  kit: { name: string } | null;
 }
 
 interface ReceiptOrder {
   orderNumber: string;
   createdAt: Date | string;
-  customerName: string;
-  phone: string;
-  email: string | null;
-  address: string;
-  city: string;
-  state: string;
-  postcode: string;
+  status: string;
+  company: { name: string; contactName: string; phone: string; email: string };
+  shippingAddress: { line1: string; line2: string | null; city: string; state: string; postcode: string };
   subtotal: number;
   shippingFee: number;
   discountAmount: number;
   total: number;
-  paymentMethod: string;
-  paymentGateway: string | null;
-  paymentStatus: string;
-  paymentRef: string | null;
-  status: string;
-  trackingNumber: string | null;
   discountCode?: { code: string; discountType: string; discountValue: number } | null;
   items: ReceiptItem[];
+}
+
+// Best-effort payment/shipping context — pulled from Invoice/Payment/Shipment
+// when the caller has them handy, distinct from `order` itself since neither
+// relation is directly reachable from Order anymore (Invoice belongs to
+// Company, not Order — see the ERD). Both optional: a credit-terms order with
+// nothing shipped/invoiced yet still has a valid, renderable receipt.
+interface ReceiptPaymentInfo {
+  method: string;
+  paymentRef: string | null;
+  paidAt: Date | string;
+}
+interface ReceiptShipmentInfo {
+  carrier: string | null;
+  trackingNumber: string | null;
 }
 
 interface ReceiptSettings {
@@ -54,9 +61,15 @@ function formatDate(d: Date | string): string {
   });
 }
 
+function methodLabel(method: string): string {
+  return method === 'WHATSAPP' ? 'Manual transfer' : 'Online (Billplz)';
+}
+
 export async function generateReceiptPdf(
   order: ReceiptOrder,
   settings: ReceiptSettings,
+  payment?: ReceiptPaymentInfo | null,
+  shipments?: ReceiptShipmentInfo[],
 ): Promise<Buffer> {
   const companyName = settings.receipt_company_name || settings.business_name || 'ASCEND';
   const companyReg = settings.receipt_company_reg || '';
@@ -121,7 +134,7 @@ export async function generateReceiptPdf(
       width: pageWidth,
     });
     doc.text(
-      `Status: ${order.status} | Payment: ${order.paymentStatus}`,
+      `Status: ${order.status}`,
       leftX,
       166,
       { align: 'right', width: pageWidth },
@@ -139,18 +152,18 @@ export async function generateReceiptPdf(
     let y = 200;
     doc.font('Helvetica-Bold').fontSize(9).fillColor('#888888').text('BILL TO', leftX, y);
     y += 16;
-    doc.font('Helvetica-Bold').fontSize(10).fillColor('#000000').text(order.customerName, leftX, y);
+    doc.font('Helvetica-Bold').fontSize(10).fillColor('#000000').text(order.company.name, leftX, y);
     y += 14;
     doc.font('Helvetica').fontSize(9).fillColor('#444444');
-    doc.text(order.phone, leftX, y);
+    doc.text(order.company.contactName, leftX, y);
     y += 12;
-    if (order.email) {
-      doc.text(order.email, leftX, y);
-      y += 12;
-    }
-    doc.text(`${order.address}`, leftX, y);
+    doc.text(order.company.phone, leftX, y);
     y += 12;
-    doc.text(`${order.city}, ${order.state} ${order.postcode}`, leftX, y);
+    doc.text(order.company.email, leftX, y);
+    y += 12;
+    doc.text(`${order.shippingAddress.line1}${order.shippingAddress.line2 ? `, ${order.shippingAddress.line2}` : ''}`, leftX, y);
+    y += 12;
+    doc.text(`${order.shippingAddress.city}, ${order.shippingAddress.state} ${order.shippingAddress.postcode}`, leftX, y);
     y += 24;
 
     // === Items Table ===
@@ -190,13 +203,15 @@ export async function generateReceiptPdf(
         doc.addPage();
         y = 50;
       }
-      const itemName = getVariantDisplayName(item.variant.product, item.variant);
+      const itemName = item.variant ? getVariantDisplayName(item.variant.product, item.variant) : (item.kit?.name ?? 'Item');
       doc.font('Helvetica').fontSize(9).fillColor('#000000');
       doc.text(itemName, colItem, y, { width: 260 });
       const nameHeight = doc.heightOfString(itemName, { width: 260 });
 
-      doc.fontSize(7).fillColor('#888888');
-      doc.text(item.variant.code, colItem, y + nameHeight, { width: 260 });
+      if (item.variant) {
+        doc.fontSize(7).fillColor('#888888');
+        doc.text(item.variant.code, colItem, y + nameHeight, { width: 260 });
+      }
 
       doc.fontSize(9).fillColor('#000000');
       doc.text(String(item.quantity), colQty, y, { width: 40, align: 'center' });
@@ -265,32 +280,34 @@ export async function generateReceiptPdf(
     doc.text(formatRM(order.total), totalsX, y, { width: totalsW, align: 'right' });
     y += 30;
 
-    // === Payment Info ===
-    doc.font('Helvetica-Bold').fontSize(8).fillColor('#888888').text('PAYMENT', leftX, y);
-    y += 14;
-    doc.font('Helvetica').fontSize(9).fillColor('#444444');
-    const payMethod =
-      order.paymentMethod === 'WHATSAPP'
-        ? 'Manual Transfer (WhatsApp)'
-        : `Online (${order.paymentGateway || 'Billplz'})`;
-    doc.text(`Method: ${payMethod}`, leftX, y);
-    y += 13;
-    if (order.paymentRef) {
-      doc.text(`Reference: ${order.paymentRef}`, leftX, y);
+    // === Payment Info — only rendered when a Payment was actually passed in;
+    // a credit-terms order with nothing recorded yet just omits this block
+    // rather than showing a misleading "unpaid" line. ===
+    if (payment) {
+      doc.font('Helvetica-Bold').fontSize(8).fillColor('#888888').text('PAYMENT', leftX, y);
+      y += 14;
+      doc.font('Helvetica').fontSize(9).fillColor('#444444');
+      doc.text(`Method: ${methodLabel(payment.method)}`, leftX, y);
       y += 13;
+      doc.text(`Received: ${formatDate(payment.paidAt)}`, leftX, y);
+      y += 13;
+      if (payment.paymentRef) {
+        doc.text(`Reference: ${payment.paymentRef}`, leftX, y);
+        y += 13;
+      }
     }
 
-    // === Tracking ===
-    if (
-      order.trackingNumber &&
-      (order.status === 'SHIPPED' || order.status === 'DELIVERED')
-    ) {
+    // === Tracking — one line per shipment that has a tracking number ===
+    const tracked = (shipments ?? []).filter((s) => s.trackingNumber);
+    if (tracked.length) {
       y += 6;
       doc.font('Helvetica-Bold').fontSize(8).fillColor('#888888').text('SHIPPING', leftX, y);
       y += 14;
       doc.font('Helvetica').fontSize(9).fillColor('#444444');
-      doc.text(`Tracking: ${order.trackingNumber}`, leftX, y);
-      y += 13;
+      for (const s of tracked) {
+        doc.text(`Tracking: ${s.trackingNumber}${s.carrier ? ` (${s.carrier})` : ''}`, leftX, y);
+        y += 13;
+      }
     }
 
     // === Footer ===

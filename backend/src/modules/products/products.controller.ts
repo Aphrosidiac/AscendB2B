@@ -31,7 +31,13 @@ export async function listProducts(fastify: FastifyInstance, query: Record<strin
       where,
       include: {
         category: { select: { name: true, slug: true } },
-        variants: { where: { active: true }, orderBy: { price: 'asc' } },
+        // Quantity-break pricing per variant; moq is a plain scalar on
+        // ProductVariant so it's already returned with no select needed.
+        variants: {
+          where: { active: true },
+          orderBy: { price: 'asc' },
+          include: { priceTiers: { orderBy: { minQty: 'asc' } } },
+        },
       },
       orderBy: [{ featured: 'desc' }, { sortOrder: 'asc' }, { createdAt: 'desc' }],
       skip,
@@ -50,7 +56,11 @@ export async function getProduct(fastify: FastifyInstance, slug: string) {
     where: { slug, active: true, addOnOnly: false },
     include: {
       category: { select: { name: true, slug: true } },
-      variants: { where: { active: true }, orderBy: { price: 'asc' } },
+      variants: {
+        where: { active: true },
+        orderBy: { price: 'asc' },
+        include: { priceTiers: { orderBy: { minQty: 'asc' } } },
+      },
       // An add-on's own parent product must also be active — otherwise a
       // soft-deleted product could still be shown (and added to cart) as
       // someone else's add-on, only to fail the whole order at checkout.

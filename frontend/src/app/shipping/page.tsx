@@ -66,7 +66,7 @@ export default async function ShippingPage() {
 
         <h2>Order Tracking</h2>
         <p>
-          Once your order has been shipped, you will receive tracking information via WhatsApp. You can also track your order anytime using your phone number on our <a href="/track" className="underline">Track Order</a> page.
+          Once your order has been shipped, you will receive tracking information via WhatsApp. You can also track your order anytime by signing in to your <a href="/account/orders" className="underline">business account</a>.
         </p>
 
         <h2>Packaging</h2>

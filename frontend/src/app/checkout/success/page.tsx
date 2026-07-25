@@ -12,16 +12,16 @@ export default function CheckoutSuccessPage() {
         <CheckCircle className="w-16 h-16 text-success mx-auto mb-4" />
         <h1 className="font-display text-2xl font-bold mb-2">Payment Successful!</h1>
         <p className="text-text-secondary mb-6">
-          Your payment has been confirmed. Your order is now being processed — check your order status anytime on the Track Order page.
+          Your payment has been confirmed. Your order is now being processed — check your order status anytime in My Orders.
         </p>
 
         <div className="flex flex-col sm:flex-row gap-3 justify-center">
           <Link href="/products"><Button variant="primary">Continue Shopping</Button></Link>
-          <Link href="/track"><Button variant="outline">Track Order</Button></Link>
+          <Link href="/account/orders"><Button variant="outline">View Orders</Button></Link>
         </div>
 
         <p className="text-xs text-text-muted mt-4">
-          You can view and download your receipt from the <Link href="/track" className="text-primary-light hover:underline">Track Order</Link> page.
+          You can view and download your receipt from the <Link href="/account/orders" className="text-primary-light hover:underline">My Orders</Link> page.
         </p>
       </Animate>
     </div>

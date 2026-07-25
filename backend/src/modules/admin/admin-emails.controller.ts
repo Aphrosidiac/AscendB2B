@@ -3,7 +3,6 @@ import { z } from 'zod';
 import { getPaginationParams, paginatedResponse } from '../../utils/pagination.js';
 import { renderOrderConfirmation } from '../../emails/order-confirmation.js';
 import { renderPaymentReceipt } from '../../emails/payment-receipt.js';
-import { reconstructPaymentUrl } from '../../utils/email-worker.js';
 import { sendEmail } from '../../utils/email.js';
 import { generateReceiptPdf } from '../../utils/receipt-pdf.js';
 
@@ -60,6 +59,28 @@ export async function adminListEmails(fastify: FastifyInstance, query: Record<st
   };
 }
 
+const ORDER_INCLUDE = {
+  items: {
+    include: {
+      variant: { select: { code: true, size: true, product: { select: { name: true } } } },
+      kit: { select: { name: true } },
+    },
+  },
+  company: { select: { name: true, contactName: true, phone: true, email: true, creditTerms: true } },
+  shippingAddress: { select: { line1: true, line2: true, city: true, state: true, postcode: true } },
+  discountCode: { select: { code: true, discountType: true, discountValue: true } },
+} as const;
+
+// A stand-in Payment shown in the admin preview/test-send for
+// PAYMENT_RECEIPT — there's no reliable way to look up the real Payment for
+// an arbitrary order from here (see the documented gap in
+// orders.controller.ts / email-worker.ts), so previewing this template just
+// renders it against a placeholder. Good enough for "does this template
+// look right", not meant to reflect a specific real payment.
+function placeholderPayment() {
+  return { method: 'BILLPLZ', paymentRef: 'PREVIEW-REF', paidAt: new Date() };
+}
+
 const previewEmailQuerySchema = z.object({
   type: z.enum(['ORDER_CONFIRMATION', 'PAYMENT_RECEIPT']),
   orderId: z.string().optional(),
@@ -67,16 +88,14 @@ const previewEmailQuerySchema = z.object({
 
 // Render a template against a real order (given id, or the latest order) and
 // return { subject, html } for the admin read-only preview. Mirrors exactly
-// what the worker sends, including the payment-link reconstruction rules.
+// what the worker sends, except PAYMENT_RECEIPT's payment details — see
+// placeholderPayment() above.
 export async function adminPreviewEmail(fastify: FastifyInstance, query: Record<string, string>) {
   const parsed = previewEmailQuerySchema.parse(query);
   const order = await fastify.prisma.order.findFirst({
     where: parsed.orderId ? { id: parsed.orderId } : { deletedAt: null },
     ...(parsed.orderId ? {} : { orderBy: { createdAt: 'desc' as const } }),
-    include: {
-      items: { include: { variant: { select: { code: true, size: true, product: { select: { name: true } } } } } },
-      discountCode: { select: { code: true, discountType: true, discountValue: true } },
-    },
+    include: ORDER_INCLUDE,
   });
   if (!order) throw { statusCode: 404, message: 'No order available to preview with' };
 
@@ -84,13 +103,9 @@ export async function adminPreviewEmail(fastify: FastifyInstance, query: Record<
   const settings = Object.fromEntries(settingsRows.map((s) => [s.key, s.value]));
 
   if (parsed.type === 'PAYMENT_RECEIPT') {
-    return renderPaymentReceipt(order, order.updatedAt, settings);
+    return renderPaymentReceipt(order, placeholderPayment(), settings);
   }
-  const paymentUrl =
-    order.paymentMethod === 'WHATSAPP' || order.paymentStatus === 'PAID'
-      ? undefined
-      : reconstructPaymentUrl(order);
-  return renderOrderConfirmation(order, paymentUrl, settings);
+  return renderOrderConfirmation(order, order.id, settings);
 }
 
 const testSendBodySchema = z.object({
@@ -111,10 +126,7 @@ export async function adminSendTestEmail(fastify: FastifyInstance, body: unknown
   const order = await fastify.prisma.order.findFirst({
     where: parsed.orderId ? { id: parsed.orderId } : { deletedAt: null },
     ...(parsed.orderId ? {} : { orderBy: { createdAt: 'desc' as const } }),
-    include: {
-      items: { include: { variant: { select: { code: true, size: true, product: { select: { name: true } } } } } },
-      discountCode: { select: { code: true, discountType: true, discountValue: true } },
-    },
+    include: ORDER_INCLUDE,
   });
   if (!order) throw { statusCode: 404, message: 'No order available to send with' };
 
@@ -126,15 +138,12 @@ export async function adminSendTestEmail(fastify: FastifyInstance, body: unknown
   let attachments: { filename: string; content: Buffer }[] | undefined;
 
   if (parsed.type === 'PAYMENT_RECEIPT') {
-    ({ subject, html } = renderPaymentReceipt(order, order.updatedAt, settings));
-    const pdf = await generateReceiptPdf(order, settings);
+    const payment = placeholderPayment();
+    ({ subject, html } = renderPaymentReceipt(order, payment, settings));
+    const pdf = await generateReceiptPdf(order, settings, payment);
     attachments = [{ filename: `receipt-${order.orderNumber}.pdf`, content: pdf }];
   } else {
-    const paymentUrl =
-      order.paymentMethod === 'WHATSAPP' || order.paymentStatus === 'PAID'
-        ? undefined
-        : reconstructPaymentUrl(order);
-    ({ subject, html } = renderOrderConfirmation(order, paymentUrl, settings));
+    ({ subject, html } = renderOrderConfirmation(order, order.id, settings));
   }
 
   // sendEmail() throws a plain Error (no statusCode) — the global handler's

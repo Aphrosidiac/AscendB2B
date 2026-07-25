@@ -85,6 +85,9 @@ model ProductVariant {
   saleStartsAt DateTime?
   saleEndsAt   DateTime?
   stock        Int       @default(0)
+  // Purchase floor independent of pricing — stops a bulk-only SKU being
+  // ordered as a single unit through the storefront.
+  moq          Int       @default(1)
   imageUrl     String?
   // Lets one size be discontinued without touching the parent or its other
   // sizes — a variant can never be hard-deleted once an order references it
@@ -93,13 +96,34 @@ model ProductVariant {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
-  product           Product        @relation(fields: [productId], references: [id])
+  product           Product         @relation(fields: [productId], references: [id])
+  priceTiers        PriceTier[]
+  batches           Batch[]
+  kitItems          KitItem[]
+  quotationItems    QuotationItem[]
   orderItems        OrderItem[]
   offeredAsAddOnFor ProductAddOn[]
 
   @@index([productId])
   @@index([active])
   @@map("product_variants")
+}
+
+// Quantity-break pricing: the row with the highest minQty <= the requested
+// quantity wins, open-ended until the next tier. Feeds the *suggested* price
+// on the storefront/quote builder — OrderItem/QuotationItem.unitPrice is
+// always its own stored snapshot, so a negotiated quote can still override it.
+model PriceTier {
+  id        String @id @default(cuid())
+  variantId String
+  minQty    Int
+  unitPrice Int
+
+  variant ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@unique([variantId, minQty])
+  @@index([variantId])
+  @@map("price_tiers")
 }
 
 // Explicit join model for a Product-to-ProductVariant add-on relation.
@@ -126,85 +150,199 @@ model ProductAddOn {
   @@map("product_add_ons")
 }
 
+// B2B lifecycle — no Pricing Approval / Purchasing(PO) stages: stock is
+// pre-secured via PreorderCampaign/Batch ahead of time, there's nothing to
+// buy per order. PARTIALLY_SHIPPED covers an order whose items span more
+// than one Shipment where not all of them have gone out yet.
 enum OrderStatus {
   PENDING
   CONFIRMED
+  PACKING
   SHIPPED
+  PARTIALLY_SHIPPED
   DELIVERED
+  COMPLETE
   CANCELLED
 }
 
+// Still B2C's enum, reused as-is for Payment.method below (bank transfer vs
+// the existing Billplz gateway) — untouched to avoid disturbing the existing
+// gateway/webhook plumbing that references it.
 enum PaymentMethod {
   WHATSAPP
   BILLPLZ
 }
 
-enum PaymentStatus {
-  UNPAID
-  PAID
-  FAILED
-  REFUNDED
-}
-
 model Order {
-  id              String        @id @default(cuid())
-  orderNumber     String        @unique
-  customerName    String
-  phone           String
-  email           String?
-  address         String
-  city            String
-  state           String
-  postcode        String
-  subtotal        Int           @default(0)
-  shippingFee     Int           @default(0)
-  discountAmount  Int           @default(0)
-  total           Int
-  status          OrderStatus   @default(PENDING)
-  paymentMethod   PaymentMethod
-  paymentGateway  String?
-  paymentStatus   PaymentStatus @default(UNPAID)
-  paymentRef      String?
-  discountCodeId  String?
-  notes           String?
-  trackingNumber  String?
-  idempotencyKey  String?       @unique
-  stockRestored   Boolean       @default(false)
+  id                String      @id @default(cuid())
+  orderNumber       String      @unique
+  companyId         String
+  // Set only when this order originated from an accepted Quotation — a quote
+  // converts to at most one order, hence @unique here.
+  quotationId       String?     @unique
+  shippingAddressId String
+  subtotal          Int         @default(0)
+  shippingFee       Int         @default(0)
+  discountAmount    Int         @default(0)
+  discountCodeId    String?
+  total             Int
+  status            OrderStatus @default(PENDING)
+  notes             String?
+  idempotencyKey    String?     @unique
   // Soft-delete only — admin "Delete" never removes the row, it just moves
   // the order into a separate Deleted view (set) / back out of it (null).
-  deletedAt       DateTime?
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  deletedAt         DateTime?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
 
-  items        OrderItem[]
-  discountCode DiscountCode? @relation(fields: [discountCodeId], references: [id])
-  emails       EmailOutbox[]
+  company         Company              @relation(fields: [companyId], references: [id])
+  quotation       Quotation?           @relation(fields: [quotationId], references: [id])
+  shippingAddress CompanyAddress       @relation(fields: [shippingAddressId], references: [id])
+  discountCode    DiscountCode?        @relation(fields: [discountCodeId], references: [id])
+  items           OrderItem[]
+  shipments       Shipment[]
+  statusHistory   OrderStatusHistory[]
+  emails          EmailOutbox[]
 
-  @@index([phone])
+  @@index([companyId])
   @@index([status])
   @@index([orderNumber])
-  @@index([paymentRef])
   @@index([deletedAt])
   @@index([createdAt])
   @@map("orders")
 }
 
+// Batch assignment lives on ShipmentItem, not here — which lot physically
+// got picked is a fulfillment-time decision, not an order-time one.
+// variantId/kitId are mutually exclusive (enforced app-side, not by a DB
+// constraint): a line is either a plain variant or a kit.
 model OrderItem {
   id        String   @id @default(cuid())
   orderId   String
-  // Prisma-level rename only (was `productId`) — the physical column is
-  // untouched via @map, so existing rows need no data migration at all.
-  variantId String   @map("productId")
+  variantId String?  @map("productId")
+  kitId     String?
   quantity  Int
   unitPrice Int
   createdAt DateTime @default(now())
 
-  order   Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  variant ProductVariant @relation(fields: [variantId], references: [id])
+  order         Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  variant       ProductVariant? @relation(fields: [variantId], references: [id])
+  kit           Kit?            @relation(fields: [kitId], references: [id])
+  shipmentItems ShipmentItem[]
 
   @@index([orderId])
   @@index([variantId])
+  @@index([kitId])
   @@map("order_items")
+}
+
+model OrderStatusHistory {
+  id        String      @id @default(cuid())
+  orderId   String
+  status    OrderStatus
+  note      String?
+  changedAt DateTime    @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@map("order_status_history")
+}
+
+model Shipment {
+  id             String    @id @default(cuid())
+  orderId        String
+  shipmentNumber String    @unique
+  shippedAt      DateTime?
+  carrier        String?
+  trackingNumber String?
+  createdAt      DateTime  @default(now())
+
+  order Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  items ShipmentItem[]
+
+  @@index([orderId])
+  @@map("shipments")
+}
+
+// The physical pick: one row per (orderItem, batch) actually fulfilled. A kit
+// OrderItem can fan out into several ShipmentItem rows — one per component
+// variant's batch — even though it traces back to a single ordered line.
+// This also means a shipment's compliance docs are just Batch.coaUrl for
+// every batch its ShipmentItems reference — no separate document table.
+model ShipmentItem {
+  id          String @id @default(cuid())
+  shipmentId  String
+  orderItemId String
+  batchId     String
+  quantity    Int
+
+  shipment    Shipment     @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  orderItem   OrderItem    @relation(fields: [orderItemId], references: [id])
+  batch       Batch        @relation(fields: [batchId], references: [id])
+  invoiceItem InvoiceItem?
+
+  @@index([shipmentId])
+  @@index([orderItemId])
+  @@index([batchId])
+  @@map("shipment_items")
+}
+
+// Belongs to Company, not Order — this is the shipment/invoice decoupling:
+// one invoice can bundle ShipmentItems from multiple orders/shipments in the
+// same billing period (e.g. monthly consolidated billing under credit
+// terms), rather than being forced 1:1 with a single order's shipment.
+model Invoice {
+  id            String   @id @default(cuid())
+  invoiceNumber String   @unique
+  companyId     String
+  issueDate     DateTime @default(now())
+  // issueDate + Company.creditTerms, set when the invoice is issued
+  // (= shipment time), never at order-placement time — a NET30 clock
+  // starting on a 6-week-out preorder would make it overdue before the
+  // goods even arrive.
+  dueDate       DateTime
+  total         Int
+  // paid/partially-paid/overdue are computed from sum(Payment.amount) vs
+  // total and dueDate vs now — no stored status to keep in sync via a cron.
+  // void is the one genuine event worth storing.
+  void          Boolean  @default(false)
+  createdAt     DateTime @default(now())
+
+  company  Company       @relation(fields: [companyId], references: [id])
+  items    InvoiceItem[]
+  payments Payment[]
+
+  @@index([companyId])
+  @@map("invoices")
+}
+
+// One ShipmentItem is billed exactly once — hence @unique on shipmentItemId.
+model InvoiceItem {
+  id             String @id @default(cuid())
+  invoiceId      String
+  shipmentItemId String @unique
+  amount         Int
+
+  invoice      Invoice      @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  shipmentItem ShipmentItem @relation(fields: [shipmentItemId], references: [id])
+
+  @@index([invoiceId])
+  @@map("invoice_items")
+}
+
+model Payment {
+  id         String        @id @default(cuid())
+  invoiceId  String
+  amount     Int
+  method     PaymentMethod
+  paymentRef String?
+  paidAt     DateTime      @default(now())
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id])
+
+  @@index([invoiceId])
+  @@map("payments")
 }
 
 enum EmailType {
@@ -282,6 +420,201 @@ model DiscountCode {
 enum DiscountType {
   PERCENTAGE
   FIXED_AMOUNT
+}
+
+enum CreditTerms {
+  PREPAID
+  NET15
+  NET30
+  NET60
+}
+
+// A Company IS the login — passwordHash lives directly here rather than a
+// separate contacts table (one business = one account = one row). New
+// signups default to PREPAID and can transact immediately; there's no
+// separate approval/pending flag — admin upgrading creditTerms later *is*
+// the approval step.
+model Company {
+  id              String      @id @default(cuid())
+  name            String
+  taxId           String?
+  contactName     String
+  phone           String
+  email           String      @unique
+  passwordHash    String
+  emailVerifiedAt DateTime?
+  creditTerms     CreditTerms @default(PREPAID)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  addresses  CompanyAddress[]
+  orders     Order[]
+  quotations Quotation[]
+  invoices   Invoice[]
+
+  @@map("companies")
+}
+
+enum AddressType {
+  BILLING
+  SHIPPING
+  BOTH
+}
+
+model CompanyAddress {
+  id        String      @id @default(cuid())
+  companyId String
+  label     String
+  line1     String
+  line2     String?
+  city      String
+  state     String
+  postcode  String
+  type      AddressType @default(BOTH)
+  createdAt DateTime    @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  orders  Order[]
+
+  @@index([companyId])
+  @@map("company_addresses")
+}
+
+enum QuotationStatus {
+  DRAFT
+  SENT
+  ACCEPTED
+  REJECTED
+  EXPIRED
+}
+
+// References Variant/Kit generically, never a specific Batch — negotiation
+// happens before a specific arrival is locked in; the actual batch gets
+// assigned like any other order, at fulfillment time. A rejected quote is
+// just replaced by a new Quotation row — no versioning/supersession chain.
+model Quotation {
+  id          String          @id @default(cuid())
+  quoteNumber String          @unique
+  companyId   String
+  status      QuotationStatus @default(DRAFT)
+  validUntil  DateTime
+  createdBy   String
+  subtotal    Int             @default(0)
+  total       Int             @default(0)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  company Company         @relation(fields: [companyId], references: [id])
+  items   QuotationItem[]
+  order   Order?
+
+  @@index([companyId])
+  @@index([status])
+  @@map("quotations")
+}
+
+// variantId/kitId are mutually exclusive (app-enforced), same convention as
+// OrderItem below.
+model QuotationItem {
+  id          String @id @default(cuid())
+  quotationId String
+  variantId   String?
+  kitId       String?
+  quantity    Int
+  // Negotiated price — may differ from the catalog price/PriceTier.
+  unitPrice   Int
+
+  quotation Quotation       @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  variant   ProductVariant? @relation(fields: [variantId], references: [id])
+  kit       Kit?            @relation(fields: [kitId], references: [id])
+
+  @@index([quotationId])
+  @@index([variantId])
+  @@index([kitId])
+  @@map("quotation_items")
+}
+
+enum CampaignStatus {
+  DRAFT
+  OPEN
+  CLOSED
+  SOLD_OUT
+}
+
+model PreorderCampaign {
+  id               String         @id @default(cuid())
+  name             String
+  opensAt          DateTime
+  closesAt         DateTime
+  estimatedArrival DateTime
+  status           CampaignStatus @default(DRAFT)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  batches Batch[]
+  kits    Kit[]
+
+  @@map("preorder_campaigns")
+}
+
+enum BatchStatus {
+  INCOMING
+  IN_STOCK
+  DEPLETED
+}
+
+model Batch {
+  id          String      @id @default(cuid())
+  variantId   String
+  campaignId  String?
+  batchNumber String      @unique
+  expiry      DateTime
+  coaUrl      String?
+  quantity    Int
+  status      BatchStatus @default(INCOMING)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  variant       ProductVariant    @relation(fields: [variantId], references: [id])
+  campaign      PreorderCampaign? @relation(fields: [campaignId], references: [id])
+  shipmentItems ShipmentItem[]
+
+  @@index([variantId])
+  @@index([campaignId])
+  @@map("batches")
+}
+
+model Kit {
+  id          String   @id @default(cuid())
+  campaignId  String?
+  name        String
+  pricePerKit Int
+  qtyPerKit   Int
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  campaign       PreorderCampaign? @relation(fields: [campaignId], references: [id])
+  items          KitItem[]
+  quotationItems QuotationItem[]
+  orderItems     OrderItem[]
+
+  @@index([campaignId])
+  @@map("kits")
+}
+
+model KitItem {
+  id        String @id @default(cuid())
+  kitId     String
+  variantId String
+  quantity  Int
+
+  kit     Kit            @relation(fields: [kitId], references: [id], onDelete: Cascade)
+  variant ProductVariant @relation(fields: [variantId], references: [id])
+
+  @@index([kitId])
+  @@index([variantId])
+  @@map("kit_items")
 }
 
 model Setting {

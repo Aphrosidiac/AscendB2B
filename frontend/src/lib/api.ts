@@ -1,13 +1,37 @@
 import axios from 'axios';
-import type { Category, Product, Order, PaginatedResponse, Insight, AdminEmailsResponse } from '@/types';
+import type {
+  Category,
+  Product,
+  Order,
+  PaginatedResponse,
+  Insight,
+  AdminEmailsResponse,
+  CompanyProfile,
+  CompanyAddress,
+  CompanyAddressType,
+  CompanyOrder,
+  Quotation,
+  Invoice,
+  AdminOrder,
+  AdminShipment,
+  PreorderCampaign,
+  Batch,
+  Kit,
+  AdminCompany,
+} from '@/types';
 
 const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL ?? '',
 });
 
-// Auto-redirect to admin login on expired/invalid JWT
-// Only fires for requests that sent an Authorization header (admin calls).
-// Public customer-facing routes never send auth headers, so they're unaffected.
+export const COMPANY_TOKEN_KEY = 'ascend-company-token';
+
+// Auto-clear expired/invalid JWTs on any 401 from a request that actually
+// sent an Authorization header (admin or company calls — public
+// customer-facing routes never send auth headers, so they're unaffected).
+// Admin also gets a hard redirect to its login page; company pages just drop
+// the stale token and let useCompanyAuth's own state (isAuthenticated) drive
+// the UI, since a signed-out company can still browse the public storefront.
 api.interceptors.response.use(
   (response) => response,
   (error) => {
@@ -16,15 +40,18 @@ api.interceptors.response.use(
       error.config?.headers?.Authorization &&
       typeof window !== 'undefined'
     ) {
-      localStorage.removeItem('ascend-admin-token');
-      // Only redirect if we're on an admin page (extra safety for customer pages)
       if (window.location.pathname.startsWith('/admin')) {
+        localStorage.removeItem('ascend-admin-token');
         window.location.href = '/admin/login';
+      } else {
+        localStorage.removeItem(COMPANY_TOKEN_KEY);
       }
     }
     return Promise.reject(error);
   }
 );
+
+const authHeader = (token: string) => ({ headers: { Authorization: `Bearer ${token}` } });
 
 // Public
 export const getCategories = () =>
@@ -100,10 +127,18 @@ export const adminCreateProduct = (token: string, data: Record<string, unknown>)
 export const adminUpdateProduct = (token: string, id: string, data: Record<string, unknown>) =>
   api.patch(`/api/v1/admin/products/${id}`, data, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.data);
 
+// NOTE: this hits the same /api/v1/admin/orders endpoint as the legacy B2C
+// admin — that controller was rewritten in-place for B2B (see
+// admin-orders.controller.ts), so the return shape is AdminOrder now, not the
+// old flat `Order`. The `Order` type/adminGetOrders name is kept only where
+// still referenced by the old track/receipt B2C pages.
 export const adminGetOrders = (token: string, params?: Record<string, string>) =>
-  api.get<PaginatedResponse<Order>>('/api/v1/admin/orders', { headers: { Authorization: `Bearer ${token}` }, params }).then((r) => r.data);
+  api.get<PaginatedResponse<AdminOrder>>('/api/v1/admin/orders', { headers: { Authorization: `Bearer ${token}` }, params }).then((r) => r.data);
 
-export const adminUpdateOrder = (token: string, id: string, data: Record<string, unknown>) =>
+export const adminGetOrder = (token: string, id: string) =>
+  api.get<AdminOrder>(`/api/v1/admin/orders/${id}`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.data);
+
+export const adminUpdateOrder = (token: string, id: string, data: { status?: string; note?: string; notes?: string }) =>
   api.patch(`/api/v1/admin/orders/${id}`, data, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.data);
 
 export const adminDeleteOrder = (token: string, id: string) =>
@@ -166,9 +201,15 @@ export const adminUpdateDiscount = (token: string, id: string, data: Record<stri
 export const adminDeleteDiscount = (token: string, id: string) =>
   api.delete(`/api/v1/admin/discounts/${id}`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.data);
 
-// Validate discount (public)
-export const validateDiscount = (code: string, subtotal: number) =>
-  api.post<{ code: string; discountType: string; discountValue: number; discountAmount: number }>('/api/v1/orders/validate-discount', { code, subtotal }).then((r) => r.data);
+// Validate discount — /api/v1/orders/* is company-scoped end to end (see
+// orders.routes.ts's top-level authenticateCompany hook), so this now needs
+// a company token same as everything else under that prefix.
+export const validateDiscount = (token: string, code: string, subtotal: number) =>
+  api.post<{ code: string; discountType: string; discountValue: number; discountAmount: number }>(
+    '/api/v1/orders/validate-discount',
+    { code, subtotal },
+    authHeader(token)
+  ).then((r) => r.data);
 
 // Insights
 export const adminGetInsights = (token: string, params?: Record<string, string>) =>
@@ -185,3 +226,248 @@ export const adminUpdateInsight = (token: string, id: string, data: Record<strin
 
 export const adminDeleteInsight = (token: string, id: string) =>
   api.delete(`/api/v1/admin/insights/${id}`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.data);
+
+// ---------------------------------------------------------------------------
+// Company (B2B) — auth, addresses, orders.
+// See backend/src/modules/companies/*.controller.ts + orders.controller.ts.
+// ---------------------------------------------------------------------------
+
+export const companySignup = (data: {
+  name: string;
+  taxId?: string;
+  contactName: string;
+  phone: string;
+  email: string;
+  password: string;
+}) => api.post<{ token: string; company: CompanyProfile }>('/api/v1/companies/signup', data).then((r) => r.data);
+
+export const companyLogin = (email: string, password: string) =>
+  api.post<{ token: string; company: CompanyProfile }>('/api/v1/companies/login', { email, password }).then((r) => r.data);
+
+export const companyGetMe = (token: string) =>
+  api.get<CompanyProfile>('/api/v1/companies/me', authHeader(token)).then((r) => r.data);
+
+export const companyListAddresses = (token: string) =>
+  api.get<CompanyAddress[]>('/api/v1/companies/addresses', authHeader(token)).then((r) => r.data);
+
+export const companyCreateAddress = (token: string, data: {
+  label: string;
+  line1: string;
+  line2?: string;
+  city: string;
+  state: string;
+  postcode: string;
+  type?: CompanyAddressType;
+}) => api.post<CompanyAddress>('/api/v1/companies/addresses', data, authHeader(token)).then((r) => r.data);
+
+export const companyUpdateAddress = (token: string, id: string, data: Partial<{
+  label: string;
+  line1: string;
+  line2: string;
+  city: string;
+  state: string;
+  postcode: string;
+  type: CompanyAddressType;
+}>) => api.patch<CompanyAddress>(`/api/v1/companies/addresses/${id}`, data, authHeader(token)).then((r) => r.data);
+
+export const companyDeleteAddress = (token: string, id: string) =>
+  api.delete<{ success: boolean }>(`/api/v1/companies/addresses/${id}`, authHeader(token)).then((r) => r.data);
+
+export const createCompanyOrder = (token: string, data: {
+  shippingAddressId: string;
+  notes?: string;
+  discountCode?: string;
+  idempotencyKey?: string;
+  payNow?: boolean;
+  items: { variantId?: string; kitId?: string; quantity: number }[];
+}) => api.post<{ order: CompanyOrder; paymentUrl?: string }>('/api/v1/orders', data, authHeader(token)).then((r) => r.data);
+
+export const listCompanyOrders = (token: string, params?: Record<string, string>) =>
+  api.get<PaginatedResponse<CompanyOrder>>('/api/v1/orders', { ...authHeader(token), params }).then((r) => r.data);
+
+export const getCompanyOrder = (token: string, id: string) =>
+  api.get<CompanyOrder>(`/api/v1/orders/${id}`, authHeader(token)).then((r) => r.data);
+
+// Authenticated receipt (replaces the old guest ?phone= lookup) — same PDF
+// blob-download pattern as adminOpenReceiptPdf above, just against the
+// company-scoped endpoint with a Bearer header instead of a query token.
+export const companyOpenReceiptPdf = (token: string, orderId: string) =>
+  api.get<Blob>(`/api/v1/orders/${orderId}/receipt/pdf`, {
+    ...authHeader(token),
+    responseType: 'blob',
+  }).then((r) => {
+    const url = URL.createObjectURL(r.data);
+    window.open(url, '_blank', 'noopener,noreferrer');
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  });
+
+// ---------------------------------------------------------------------------
+// Company (B2B) — quotations.
+// See backend/src/modules/quotations/quotations.controller.ts.
+// ---------------------------------------------------------------------------
+
+export const requestQuotation = (token: string, data: {
+  validUntil?: string;
+  items: { variantId?: string; kitId?: string; quantity: number }[];
+}) => api.post<Quotation>('/api/v1/quotations', data, authHeader(token)).then((r) => r.data);
+
+export const listCompanyQuotations = (token: string, params?: Record<string, string>) =>
+  api.get<PaginatedResponse<Quotation>>('/api/v1/quotations', { ...authHeader(token), params }).then((r) => r.data);
+
+export const getCompanyQuotation = (token: string, id: string) =>
+  api.get<Quotation>(`/api/v1/quotations/${id}`, authHeader(token)).then((r) => r.data);
+
+export const acceptCompanyQuotation = (token: string, id: string, shippingAddressId?: string) =>
+  api.post<CompanyOrder>(
+    `/api/v1/quotations/${id}/accept`,
+    shippingAddressId ? { shippingAddressId } : {},
+    authHeader(token)
+  ).then((r) => r.data);
+
+export const rejectCompanyQuotation = (token: string, id: string) =>
+  api.post<Quotation>(`/api/v1/quotations/${id}/reject`, {}, authHeader(token)).then((r) => r.data);
+
+// ---------------------------------------------------------------------------
+// Company (B2B) — invoices (read-only; admin issues/voids/records payment).
+// See backend/src/modules/companies/company-invoices.controller.ts.
+// ---------------------------------------------------------------------------
+
+export const listCompanyInvoices = (token: string, params?: Record<string, string>) =>
+  api.get<PaginatedResponse<Invoice>>('/api/v1/companies/invoices', { ...authHeader(token), params }).then((r) => r.data);
+
+export const getCompanyInvoice = (token: string, id: string) =>
+  api.get<Invoice>(`/api/v1/companies/invoices/${id}`, authHeader(token)).then((r) => r.data);
+
+// ---------------------------------------------------------------------------
+// Admin (B2B) — shipments.
+// See backend/src/modules/admin/admin-shipments.controller.ts.
+// ---------------------------------------------------------------------------
+
+export const adminListShipments = (token: string, params?: Record<string, string>) =>
+  api.get<PaginatedResponse<AdminShipment>>('/api/v1/admin/shipments', { ...authHeader(token), params }).then((r) => r.data);
+
+export const adminGetShipment = (token: string, id: string) =>
+  api.get<AdminShipment>(`/api/v1/admin/shipments/${id}`, authHeader(token)).then((r) => r.data);
+
+export const adminCreateShipment = (token: string, data: { orderId: string; carrier?: string; trackingNumber?: string }) =>
+  api.post<AdminShipment>('/api/v1/admin/shipments', data, authHeader(token)).then((r) => r.data);
+
+export const adminAddShipmentItem = (token: string, shipmentId: string, data: { orderItemId: string; batchId: string; quantity: number }) =>
+  api.post(`/api/v1/admin/shipments/${shipmentId}/items`, data, authHeader(token)).then((r) => r.data);
+
+export const adminShipShipment = (token: string, shipmentId: string, data?: { carrier?: string; trackingNumber?: string }) =>
+  api.post<AdminShipment>(`/api/v1/admin/shipments/${shipmentId}/ship`, data ?? {}, authHeader(token)).then((r) => r.data);
+
+// ---------------------------------------------------------------------------
+// Admin (B2B) — invoices.
+// See backend/src/modules/admin/admin-invoices.controller.ts.
+// ---------------------------------------------------------------------------
+
+export const adminListInvoices = (token: string, params?: Record<string, string>) =>
+  api.get<PaginatedResponse<Invoice>>('/api/v1/admin/invoices', { ...authHeader(token), params }).then((r) => r.data);
+
+export const adminGetInvoice = (token: string, id: string) =>
+  api.get<Invoice>(`/api/v1/admin/invoices/${id}`, authHeader(token)).then((r) => r.data);
+
+export const adminGenerateInvoice = (token: string, data: { shipmentItemIds: string[] }) =>
+  api.post<Invoice>('/api/v1/admin/invoices', data, authHeader(token)).then((r) => r.data);
+
+export const adminRecordPayment = (token: string, invoiceId: string, data: { amount: number; method: 'WHATSAPP' | 'BILLPLZ'; paymentRef?: string }) =>
+  api.post(`/api/v1/admin/invoices/${invoiceId}/payments`, data, authHeader(token)).then((r) => r.data);
+
+export const adminVoidInvoice = (token: string, id: string) =>
+  api.post<Invoice>(`/api/v1/admin/invoices/${id}/void`, {}, authHeader(token)).then((r) => r.data);
+
+// ---------------------------------------------------------------------------
+// Admin (B2B) — preorder campaigns.
+// See backend/src/modules/admin/admin-campaigns.controller.ts.
+// ---------------------------------------------------------------------------
+
+export const adminListCampaigns = (token: string, params?: Record<string, string>) =>
+  api.get<PaginatedResponse<PreorderCampaign>>('/api/v1/admin/campaigns', { ...authHeader(token), params }).then((r) => r.data);
+
+export const adminGetCampaign = (token: string, id: string) =>
+  api.get<PreorderCampaign>(`/api/v1/admin/campaigns/${id}`, authHeader(token)).then((r) => r.data);
+
+export const adminCreateCampaign = (token: string, data: Record<string, unknown>) =>
+  api.post<PreorderCampaign>('/api/v1/admin/campaigns', data, authHeader(token)).then((r) => r.data);
+
+export const adminUpdateCampaign = (token: string, id: string, data: Record<string, unknown>) =>
+  api.patch<PreorderCampaign>(`/api/v1/admin/campaigns/${id}`, data, authHeader(token)).then((r) => r.data);
+
+export const adminDeleteCampaign = (token: string, id: string) =>
+  api.delete(`/api/v1/admin/campaigns/${id}`, authHeader(token)).then((r) => r.data);
+
+// ---------------------------------------------------------------------------
+// Admin (B2B) — batches.
+// See backend/src/modules/admin/admin-batches.controller.ts.
+// ---------------------------------------------------------------------------
+
+export const adminListBatches = (token: string, params?: Record<string, string>) =>
+  api.get<PaginatedResponse<Batch>>('/api/v1/admin/batches', { ...authHeader(token), params }).then((r) => r.data);
+
+export const adminGetBatch = (token: string, id: string) =>
+  api.get<Batch>(`/api/v1/admin/batches/${id}`, authHeader(token)).then((r) => r.data);
+
+export const adminCreateBatch = (token: string, data: Record<string, unknown>) =>
+  api.post<Batch>('/api/v1/admin/batches', data, authHeader(token)).then((r) => r.data);
+
+export const adminUpdateBatch = (token: string, id: string, data: Record<string, unknown>) =>
+  api.patch<Batch>(`/api/v1/admin/batches/${id}`, data, authHeader(token)).then((r) => r.data);
+
+export const adminDeleteBatch = (token: string, id: string) =>
+  api.delete(`/api/v1/admin/batches/${id}`, authHeader(token)).then((r) => r.data);
+
+// ---------------------------------------------------------------------------
+// Admin (B2B) — kits.
+// See backend/src/modules/admin/admin-kits.controller.ts.
+// ---------------------------------------------------------------------------
+
+export const adminListKits = (token: string, params?: Record<string, string>) =>
+  api.get<PaginatedResponse<Kit>>('/api/v1/admin/kits', { ...authHeader(token), params }).then((r) => r.data);
+
+export const adminGetKit = (token: string, id: string) =>
+  api.get<Kit>(`/api/v1/admin/kits/${id}`, authHeader(token)).then((r) => r.data);
+
+export const adminCreateKit = (token: string, data: Record<string, unknown>) =>
+  api.post<Kit>('/api/v1/admin/kits', data, authHeader(token)).then((r) => r.data);
+
+export const adminUpdateKit = (token: string, id: string, data: Record<string, unknown>) =>
+  api.patch<Kit>(`/api/v1/admin/kits/${id}`, data, authHeader(token)).then((r) => r.data);
+
+export const adminDeleteKit = (token: string, id: string) =>
+  api.delete(`/api/v1/admin/kits/${id}`, authHeader(token)).then((r) => r.data);
+
+// ---------------------------------------------------------------------------
+// Admin (B2B) — companies. No create — companies self-signup.
+// See backend/src/modules/admin/admin-companies.controller.ts.
+// ---------------------------------------------------------------------------
+
+export const adminListCompanies = (token: string, params?: Record<string, string>) =>
+  api.get<PaginatedResponse<AdminCompany>>('/api/v1/admin/companies', { ...authHeader(token), params }).then((r) => r.data);
+
+export const adminGetCompany = (token: string, id: string) =>
+  api.get<AdminCompany>(`/api/v1/admin/companies/${id}`, authHeader(token)).then((r) => r.data);
+
+export const adminUpdateCompany = (token: string, id: string, data: Record<string, unknown>) =>
+  api.patch<AdminCompany>(`/api/v1/admin/companies/${id}`, data, authHeader(token)).then((r) => r.data);
+
+// ---------------------------------------------------------------------------
+// Admin (B2B) — quotations.
+// See backend/src/modules/admin/admin-quotations.controller.ts.
+// ---------------------------------------------------------------------------
+
+export const adminListQuotations = (token: string, params?: Record<string, string>) =>
+  api.get<PaginatedResponse<Quotation>>('/api/v1/admin/quotations', { ...authHeader(token), params }).then((r) => r.data);
+
+export const adminGetQuotation = (token: string, id: string) =>
+  api.get<Quotation>(`/api/v1/admin/quotations/${id}`, authHeader(token)).then((r) => r.data);
+
+export const adminUpdateQuotation = (token: string, id: string, data: Record<string, unknown>) =>
+  api.patch<Quotation>(`/api/v1/admin/quotations/${id}`, data, authHeader(token)).then((r) => r.data);
+
+export const adminSendQuotation = (token: string, id: string) =>
+  api.post<Quotation>(`/api/v1/admin/quotations/${id}/send`, {}, authHeader(token)).then((r) => r.data);
+
+export const adminSetQuotationStatus = (token: string, id: string, data: { status: 'SENT' | 'ACCEPTED' | 'REJECTED' | 'EXPIRED'; shippingAddressId?: string }) =>
+  api.post<Quotation>(`/api/v1/admin/quotations/${id}/status`, data, authHeader(token)).then((r) => r.data);

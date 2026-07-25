@@ -59,27 +59,28 @@ export function formatDate(d: Date | string): string {
 }
 
 // Order shape both templates render — the worker's include (items with
-// variant + parent product) satisfies this, as does the admin/receipt include.
+// variant + parent product, or kit; company; shippingAddress) satisfies this,
+// as does the admin preview/test-send include. A line is either a variant or
+// a kit (same mutual-exclusivity convention as OrderItem in schema.prisma).
 export interface EmailOrderItem {
   quantity: number;
   unitPrice: number;
-  variant: { size: string | null; product: { name: string } };
+  variant: { size: string | null; product: { name: string } } | null;
+  kit?: { name: string } | null;
 }
 
 export interface EmailOrder {
   orderNumber: string;
   createdAt: Date | string;
-  customerName: string;
-  address: string;
-  city: string;
-  state: string;
-  postcode: string;
+  // Recipient/shipping details now come from Company + CompanyAddress — Order
+  // dropped its own flat customerName/address/city/state/postcode fields in
+  // the B2B rework.
+  company: { name: string; contactName: string; creditTerms: string };
+  shippingAddress: { line1: string; line2: string | null; city: string; state: string; postcode: string };
   subtotal: number;
   shippingFee: number;
   discountAmount: number;
   total: number;
-  paymentMethod: string;
-  paymentGateway: string | null;
   discountCode?: { code: string } | null;
   items: EmailOrderItem[];
 }
@@ -127,12 +128,15 @@ const totalRow = (label: string, value: string, bold = false) => `
 export function renderOrderSummary(order: EmailOrder): string {
   const itemRows = order.items
     .map((item) => {
-      const sizeLine = item.variant.size
+      // variantId/kitId are mutually exclusive on OrderItem — pick whichever
+      // relation is populated for this line's display name.
+      const name = item.variant ? item.variant.product.name : (item.kit?.name ?? 'Item');
+      const sizeLine = item.variant?.size
         ? `<br><span style="font-family:${FONT};font-size:11px;color:${MUTED};">${escapeHtml(item.variant.size)}</span>`
         : '';
       return `
             <tr>
-              <td style="${cellStyle}"><span style="font-weight:600;">${escapeHtml(item.variant.product.name)}</span>${sizeLine}</td>
+              <td style="${cellStyle}"><span style="font-weight:600;">${escapeHtml(name)}</span>${sizeLine}</td>
               <td align="center" style="${cellStyle}">${item.quantity}</td>
               <td align="right" style="${cellStyle}">${formatRM(item.unitPrice * item.quantity)}</td>
             </tr>`;
@@ -157,9 +161,9 @@ export function renderOrderSummary(order: EmailOrder): string {
           </table>
           <p style="margin:28px 0 6px;font-family:${FONT};font-size:11px;font-weight:700;letter-spacing:0.08em;color:${MUTED};">SHIPPING ADDRESS</p>
           <p style="margin:0;font-family:${FONT};font-size:13px;line-height:1.6;color:${BODY};">
-            ${escapeHtml(order.customerName)}<br>
-            ${escapeHtml(order.address)}<br>
-            ${escapeHtml(order.city)}, ${escapeHtml(order.state)} ${escapeHtml(order.postcode)}
+            ${escapeHtml(order.company.name)}<br>
+            ${escapeHtml(order.shippingAddress.line1)}${order.shippingAddress.line2 ? `, ${escapeHtml(order.shippingAddress.line2)}` : ''}<br>
+            ${escapeHtml(order.shippingAddress.city)}, ${escapeHtml(order.shippingAddress.state)} ${escapeHtml(order.shippingAddress.postcode)}
           </p>`;
 }
 

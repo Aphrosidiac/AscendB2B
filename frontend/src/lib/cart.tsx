@@ -3,6 +3,7 @@
 import { createContext, useContext, useReducer, useEffect, useState, useCallback, useRef, type ReactNode } from 'react';
 import type { CartItem } from '@/types';
 import { CartToast } from '@/components/ui/CartToast';
+import { getTieredPrice } from '@/lib/utils';
 
 interface CartState {
   items: CartItem[];
@@ -19,8 +20,15 @@ type CartAction =
   | { type: 'CLEAR' }
   | { type: 'LOAD'; payload: CartItem[] };
 
-function clampToStock(quantity: number, stock: number | undefined): number {
-  return stock != null ? Math.min(quantity, stock) : quantity;
+// Clamps to the variant's stock ceiling AND its MOQ floor — a bulk-only SKU
+// can't be dragged below its minimum order quantity from the cart, same as
+// the PDP's quantity stepper (AddToCartPanel). Either bound is optional:
+// carts saved before stock/moq were tracked have neither, and the backend
+// re-validates both at order creation regardless.
+function clampQuantity(quantity: number, stock: number | undefined, moq: number | undefined): number {
+  const min = moq && moq > 1 ? moq : 1;
+  const clamped = Math.max(min, quantity);
+  return stock != null ? Math.min(clamped, stock) : clamped;
 }
 
 function cartReducer(state: CartState, action: CartAction): CartState {
@@ -32,16 +40,23 @@ function cartReducer(state: CartState, action: CartAction): CartState {
           ...state,
           items: state.items.map((i) =>
             i.variantId === action.payload.variantId
-              // Clamp the merged quantity to the variant's stock so repeated
-              // adds can't push the line past what's actually available.
-              // (stock is missing on carts saved before it was tracked —
-              // no clamp then; the backend re-validates at order time.)
-              ? { ...i, quantity: clampToStock(i.quantity + action.payload.quantity, action.payload.stock ?? i.stock) }
+              // Clamp the merged quantity to the variant's stock/moq so
+              // repeated adds can't push the line past what's actually
+              // available, or back under its purchase floor.
+              ? {
+                  ...i,
+                  quantity: clampQuantity(i.quantity + action.payload.quantity, action.payload.stock ?? i.stock, action.payload.moq ?? i.moq),
+                  moq: action.payload.moq ?? i.moq,
+                  priceTiers: action.payload.priceTiers ?? i.priceTiers,
+                }
               : i
           ),
         };
       }
-      return { ...state, items: [...state.items, { ...action.payload, quantity: clampToStock(action.payload.quantity, action.payload.stock) }] };
+      return {
+        ...state,
+        items: [...state.items, { ...action.payload, quantity: clampQuantity(action.payload.quantity, action.payload.stock, action.payload.moq) }],
+      };
     }
     case 'REMOVE_ITEM':
       return { ...state, items: state.items.filter((i) => i.variantId !== action.payload) };
@@ -50,7 +65,7 @@ function cartReducer(state: CartState, action: CartAction): CartState {
         ...state,
         items: state.items.map((i) =>
           i.variantId === action.payload.variantId
-            ? { ...i, quantity: clampToStock(action.payload.quantity, i.stock) }
+            ? { ...i, quantity: clampQuantity(action.payload.quantity, i.stock, i.moq) }
             : i
         ),
       };
@@ -106,7 +121,11 @@ export function CartProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('ascend-cart', JSON.stringify(state.items));
   }, [state.items]);
 
-  const total = state.items.reduce((sum, i) => sum + i.price * i.quantity, 0);
+  // Uses each line's own tiered price at its current quantity where
+  // priceTiers were captured at add-to-cart time — display-only estimate,
+  // same caveat as getTieredPrice's docstring (the order response's total is
+  // the real one).
+  const total = state.items.reduce((sum, i) => sum + getTieredPrice(i.priceTiers, i.quantity, i.price) * i.quantity, 0);
   const itemCount = state.items.reduce((sum, i) => sum + i.quantity, 0);
 
   const addItem = useCallback((item: CartItem) => {

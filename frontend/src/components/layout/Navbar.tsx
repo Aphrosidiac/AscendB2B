@@ -4,14 +4,16 @@ import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import { ShoppingCart, Menu, X, Search } from 'lucide-react';
+import { ShoppingCart, Menu, X, Search, User } from 'lucide-react';
 import { useCart } from '@/lib/cart';
+import { useCompanyAuth } from '@/hooks/useCompanyAuth';
 import { MolecularNetwork } from '@/components/ui/MolecularNetwork';
 
 const EASE = 'cubic-bezier(0.16,1,0.3,1)';
 
 export function Navbar() {
   const { itemCount } = useCart();
+  const { isAuthenticated } = useCompanyAuth();
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   // menuOpen is the logical on/off state; menuMounted keeps the overlay in
@@ -28,8 +30,9 @@ export function Navbar() {
     { href: '/products', label: 'Products' },
     { href: '/insights', label: 'Insights' },
     { href: '/calculator', label: 'Calculator' },
-    { href: '/track', label: 'Track Order' },
+    { href: '/account/orders', label: 'My Orders' },
     { href: '/about', label: 'About' },
+    { href: isAuthenticated ? '/account' : '/login', label: isAuthenticated ? 'Account' : 'Sign In' },
   ];
 
   useEffect(() => {
@@ -141,6 +144,14 @@ export function Navbar() {
                 <Search className="w-5 h-5" />
               </button>
             )}
+
+            <Link
+              href={isAuthenticated ? '/account' : '/login'}
+              className="hidden sm:flex p-3 hover:bg-surface-elevated rounded-lg transition-colors"
+              aria-label={isAuthenticated ? 'Account' : 'Sign in'}
+            >
+              <User className="w-5 h-5" />
+            </Link>
 
             <Link href="/cart" className="relative p-3 hover:bg-surface-elevated rounded-lg transition-colors">
               <ShoppingCart className="w-5 h-5" />

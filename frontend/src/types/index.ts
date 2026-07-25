@@ -6,6 +6,16 @@ export interface Category {
   productCount: number;
 }
 
+// Quantity-break pricing row for a variant — the tier with the highest
+// minQty <= the requested quantity wins (see backend/src/utils/product-pricing.ts
+// getTieredUnitPrice, the actual charging logic this mirrors for display).
+export interface PriceTier {
+  id: string;
+  variantId?: string;
+  minQty: number;
+  unitPrice: number;
+}
+
 // A single sellable SKU (one size/strength) belonging to a parent Product.
 export interface ProductVariant {
   id: string;
@@ -17,6 +27,13 @@ export interface ProductVariant {
   saleStartsAt: string | null;
   saleEndsAt: string | null;
   stock: number;
+  // Purchase floor independent of pricing — a bulk-only SKU can't be ordered
+  // below this through the storefront (enforced again server-side at order
+  // creation). Defaults to 1 on every variant, so always present.
+  moq: number;
+  // Quantity-break pricing, ordered by minQty ascending. Always present
+  // (possibly empty) on public product list/detail responses.
+  priceTiers: PriceTier[];
   imageUrl: string | null;
   active: boolean;
   updatedAt: string;
@@ -92,6 +109,15 @@ export interface CartItem {
   // the cart reducer. Optional because carts saved before this field existed
   // won't have it (the backend re-validates stock at order creation anyway).
   stock?: number;
+  // Minimum order quantity at add-to-cart time — the cart reducer won't let
+  // quantity drop below this. Optional for the same reason as `stock` above
+  // (older saved carts, and add-on lines which have no MOQ concept).
+  moq?: number;
+  // Snapshot of the variant's quantity-break pricing, used only to compute a
+  // display-only tiered subtotal in the cart/checkout UI (see
+  // lib/utils.ts's getTieredPrice) — the backend always recomputes the real
+  // charged price at order creation regardless of what's stored here.
+  priceTiers?: PriceTier[];
   imageUrl: string | null;
 }
 
@@ -225,4 +251,335 @@ export interface Insight {
   // Present only on the public single-insight response (resolved server-side
   // from relatedProductIds, excluding hidden/discontinued products).
   relatedProducts?: RelatedProductRef[];
+}
+
+// ---------------------------------------------------------------------------
+// B2B — Company auth, addresses, orders (see docs/erd-b2b.md).
+// Deliberately kept separate from the legacy B2C `Order`/`ORDER_STATUS_*`
+// types above rather than reshaping them in place — those are still read by
+// the old track/receipt/admin-orders pages (`/track`, `/receipt/[...]`,
+// `admin/orders`) which a later pass replaces; this file just needs both
+// shapes to coexist until then.
+// ---------------------------------------------------------------------------
+
+export type CreditTerms = 'PREPAID' | 'NET15' | 'NET30' | 'NET60';
+
+export interface CompanyProfile {
+  id: string;
+  name: string;
+  taxId: string | null;
+  contactName: string;
+  phone: string;
+  email: string;
+  emailVerifiedAt: string | null;
+  creditTerms: CreditTerms;
+  createdAt: string;
+}
+
+export type CompanyAddressType = 'BILLING' | 'SHIPPING' | 'BOTH';
+
+export interface CompanyAddress {
+  id: string;
+  companyId: string;
+  label: string;
+  line1: string;
+  line2: string | null;
+  city: string;
+  state: string;
+  postcode: string;
+  type: CompanyAddressType;
+  createdAt: string;
+}
+
+// The 8 OrderStatus values from schema.prisma — the stepper/filter-pills UI
+// collapses PACKING/SHIPPED/PARTIALLY_SHIPPED etc into 6 display steps (see
+// components/orders/OrderStepper.tsx), but the API value itself is one of these.
+export type CompanyOrderStatus =
+  | 'PENDING'
+  | 'CONFIRMED'
+  | 'PACKING'
+  | 'SHIPPED'
+  | 'PARTIALLY_SHIPPED'
+  | 'DELIVERED'
+  | 'COMPLETE'
+  | 'CANCELLED';
+
+export interface CompanyOrderItem {
+  id: string;
+  variantId: string | null;
+  kitId: string | null;
+  quantity: number;
+  unitPrice: number;
+  variant?: {
+    code: string;
+    size: string | null;
+    imageUrl?: string | null;
+    product: { name: string };
+  } | null;
+  kit?: { name: string } | null;
+}
+
+export interface CompanyOrderStatusHistoryEntry {
+  id: string;
+  orderId: string;
+  status: CompanyOrderStatus;
+  changedAt: string;
+  note: string | null;
+}
+
+// Batch/orderItem nested info is only populated on the order-detail endpoint
+// (getMyOrder) — it's what powers the Files tab (Batch.coaUrl per shipment
+// item, per docs/frontend-design.md) and the per-line display on the
+// Shipments tab. Absent on any response that doesn't include it.
+export interface CompanyOrderShipmentItem {
+  id: string;
+  shipmentId: string;
+  orderItemId: string;
+  batchId: string;
+  quantity: number;
+  batch?: { batchNumber: string; expiry: string; coaUrl: string | null; variantId?: string };
+  orderItem?: {
+    id: string;
+    quantity: number;
+    unitPrice: number;
+    variant?: { code: string; size: string | null; product: { name: string } } | null;
+    kit?: { name: string } | null;
+  };
+}
+
+export interface CompanyOrderShipment {
+  id: string;
+  orderId: string;
+  shipmentNumber: string;
+  shippedAt: string | null;
+  carrier: string | null;
+  trackingNumber: string | null;
+  items: CompanyOrderShipmentItem[];
+}
+
+// Company-scoped order — the shape returned by
+// backend/src/modules/orders/orders.controller.ts (list/get). Distinct from
+// the legacy B2C `Order` above: companyId-scoped, address is a
+// `CompanyAddress` FK rather than typed-in-line fields, and status covers
+// the fulfillment lifecycle (PACKING/SHIPPED/PARTIALLY_SHIPPED/COMPLETE)
+// instead of B2C's flat PENDING..CANCELLED set.
+export interface CompanyOrder {
+  id: string;
+  orderNumber: string;
+  companyId: string;
+  quotationId: string | null;
+  shippingAddressId: string;
+  subtotal: number;
+  shippingFee: number;
+  discountAmount: number;
+  total: number;
+  status: CompanyOrderStatus;
+  notes: string | null;
+  deletedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  items: CompanyOrderItem[];
+  shippingAddress?: CompanyAddress;
+  discountCode?: { code: string; discountType: string; discountValue: number } | null;
+  shipments?: CompanyOrderShipment[];
+  statusHistory?: CompanyOrderStatusHistoryEntry[];
+}
+
+// ---------------------------------------------------------------------------
+// B2B — Quotations (backend/src/modules/quotations/quotations.controller.ts).
+// ---------------------------------------------------------------------------
+
+export type QuotationStatus = 'DRAFT' | 'SENT' | 'ACCEPTED' | 'REJECTED' | 'EXPIRED';
+
+export interface QuotationItem {
+  id: string;
+  quotationId: string;
+  variantId: string | null;
+  kitId: string | null;
+  quantity: number;
+  // Negotiated price — 0 until an admin fills it in (see requestQuotation's
+  // comment); may differ from the catalog price/PriceTier.
+  unitPrice: number;
+  variant?: {
+    code: string;
+    size: string | null;
+    imageUrl?: string | null;
+    product: { name: string };
+  } | null;
+  kit?: { name: string } | null;
+}
+
+export interface Quotation {
+  id: string;
+  quoteNumber: string;
+  companyId: string;
+  status: QuotationStatus;
+  validUntil: string;
+  createdBy: string;
+  subtotal: number;
+  total: number;
+  createdAt: string;
+  updatedAt: string;
+  items: QuotationItem[];
+  // Admin list/detail only.
+  company?: { id: string; name: string; email: string };
+}
+
+// ---------------------------------------------------------------------------
+// B2B — Invoices (backend/src/modules/admin/admin-invoices.controller.ts +
+// the company-scoped mirror in modules/companies/company-invoices.controller.ts).
+// paid/void/overdue status is always server-computed (never stored) — see
+// computeInvoiceStatus — so every response carries `status`/`paidAmount`
+// alongside the raw Invoice fields rather than the frontend re-deriving it.
+// ---------------------------------------------------------------------------
+
+export type InvoiceStatus = 'VOID' | 'PAID' | 'PARTIALLY_PAID' | 'OVERDUE' | 'UNPAID';
+
+export interface InvoicePayment {
+  id: string;
+  invoiceId: string;
+  amount: number;
+  method: 'WHATSAPP' | 'BILLPLZ';
+  paymentRef: string | null;
+  paidAt: string;
+}
+
+export interface InvoiceItem {
+  id: string;
+  invoiceId: string;
+  shipmentItemId: string;
+  amount: number;
+  // Only present on the single-invoice detail endpoint.
+  shipmentItem?: {
+    id: string;
+    quantity: number;
+    batch: { batchNumber: string; expiry: string; coaUrl: string | null };
+    orderItem: {
+      variant?: { code: string; size: string | null; product: { name: string } } | null;
+      kit?: { name: string } | null;
+    };
+    shipment: { id: string; shipmentNumber: string; orderId: string };
+  };
+}
+
+export interface Invoice {
+  id: string;
+  invoiceNumber: string;
+  companyId: string;
+  issueDate: string;
+  dueDate: string;
+  total: number;
+  void: boolean;
+  createdAt: string;
+  paidAmount: number;
+  status: InvoiceStatus;
+  // Present on the list endpoint (count only) or detail endpoint (full rows).
+  items?: InvoiceItem[];
+  payments?: InvoicePayment[];
+  _count?: { items: number };
+  // Admin list/detail only.
+  company?: { id: string; name: string; creditTerms: CreditTerms };
+}
+
+// ---------------------------------------------------------------------------
+// Admin — orders (backend/src/modules/admin/admin-orders.controller.ts). Same
+// underlying Order/OrderStatus as the company-facing CompanyOrder above —
+// admin's list/detail responses just add the company + email-outbox fields a
+// company obviously never sees about itself.
+// ---------------------------------------------------------------------------
+
+export interface AdminOrder extends CompanyOrder {
+  company: { id: string; name: string; contactName: string; email: string; creditTerms: CreditTerms };
+  emails?: OrderEmail[];
+}
+
+// ---------------------------------------------------------------------------
+// Admin — shipments (backend/src/modules/admin/admin-shipments.controller.ts).
+// ---------------------------------------------------------------------------
+
+export interface AdminShipment {
+  id: string;
+  orderId: string;
+  shipmentNumber: string;
+  shippedAt: string | null;
+  carrier: string | null;
+  trackingNumber: string | null;
+  createdAt: string;
+  // List endpoint's shallow order ref; detail endpoint's fuller one with
+  // company name. Both optional since callers only ever have one or the other.
+  order?: { id: string; orderNumber: string; companyId: string } | { id: string; orderNumber: string; company: { name: string } };
+  items: CompanyOrderShipmentItem[];
+}
+
+// ---------------------------------------------------------------------------
+// Admin — campaigns / batches / kits
+// (backend/src/modules/admin/admin-{campaigns,batches,kits}.controller.ts).
+// ---------------------------------------------------------------------------
+
+export type CampaignStatus = 'DRAFT' | 'OPEN' | 'CLOSED' | 'SOLD_OUT';
+
+export interface PreorderCampaign {
+  id: string;
+  name: string;
+  opensAt: string;
+  closesAt: string;
+  estimatedArrival: string;
+  status: CampaignStatus;
+  createdAt: string;
+  updatedAt: string;
+  _count?: { batches: number; kits: number };
+  // Detail endpoint only.
+  batches?: Batch[];
+  kits?: Kit[];
+}
+
+export type BatchStatus = 'INCOMING' | 'IN_STOCK' | 'DEPLETED';
+
+export interface Batch {
+  id: string;
+  variantId: string;
+  campaignId: string | null;
+  batchNumber: string;
+  expiry: string;
+  coaUrl: string | null;
+  quantity: number;
+  status: BatchStatus;
+  createdAt: string;
+  updatedAt: string;
+  variant?: { id: string; code: string; size: string | null; product: { id: string; name: string } };
+  campaign?: { id: string; name: string; status: CampaignStatus } | null;
+  _count?: { shipmentItems: number };
+}
+
+export interface KitItem {
+  id: string;
+  kitId: string;
+  variantId: string;
+  quantity: number;
+  variant?: { id: string; code: string; size: string | null; product?: { name: string } };
+}
+
+export interface Kit {
+  id: string;
+  name: string;
+  pricePerKit: number;
+  qtyPerKit: number;
+  campaignId: string | null;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+  items: KitItem[];
+  campaign?: { id: string; name: string; status: CampaignStatus } | null;
+}
+
+// ---------------------------------------------------------------------------
+// Admin — companies (backend/src/modules/admin/admin-companies.controller.ts).
+// ---------------------------------------------------------------------------
+
+export interface AdminCompany extends CompanyProfile {
+  _count?: { orders: number; quotations: number };
+  // Detail endpoint only.
+  addresses?: CompanyAddress[];
+  lifetimeOrderValue?: number;
+  recentOrders?: { id: string; orderNumber: string; status: CompanyOrderStatus; total: number; createdAt: string }[];
 }

@@ -20,6 +20,11 @@ interface CreateBillParams {
   callbackUrl: string;
   redirectUrl: string;
   referenceOne?: string;
+  // Second reference slot — used by the pay-now checkout flow to carry the
+  // Order id alongside reference_1 (the Invoice number), since Invoice has no
+  // FK back to the Order it was raised for. See payment-gateway.ts /
+  // payments.controller.ts for how both get read back out of the callback.
+  referenceTwo?: string;
 }
 
 interface BillResponse {
@@ -32,6 +37,8 @@ interface BillResponse {
   url: string;
   name: string;
   description: string;
+  reference_1?: string;
+  reference_2?: string;
 }
 
 export async function createBill(params: CreateBillParams): Promise<BillResponse> {
@@ -46,8 +53,10 @@ export async function createBill(params: CreateBillParams): Promise<BillResponse
       description: params.description,
       callback_url: params.callbackUrl,
       redirect_url: params.redirectUrl,
-      reference_1_label: 'Order Number',
+      reference_1_label: 'Invoice Number',
       reference_1: params.referenceOne || '',
+      reference_2_label: 'Order ID',
+      reference_2: params.referenceTwo || '',
     },
     { auth: getAuth(), timeout: 30000 }
   );

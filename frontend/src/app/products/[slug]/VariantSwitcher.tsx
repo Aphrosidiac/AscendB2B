@@ -7,6 +7,7 @@ import { Animate } from '@/components/ui/Animate';
 import { formatPrice, getDefaultVariant, getEffectivePrice, getVariantDisplayName, isSaleActive } from '@/lib/utils';
 import { AddToCartPanel } from './AddToCartPanel';
 import { SkuBadge } from '@/components/products/SkuBadge';
+import { PriceTierTable } from '@/components/products/PriceTierTable';
 import type { Product } from '@/types';
 
 interface Props {
@@ -117,7 +118,21 @@ export function VariantSwitcher({ product, benefits, shippingFee }: Props) {
             <div className="flex items-baseline gap-2.5">
               <p className="font-display text-3xl font-bold">{formatPrice(effectivePrice)}</p>
               {onSale && <p className="text-lg text-text-muted line-through">{formatPrice(variant.price)}</p>}
+              <span className="text-sm text-text-muted">per unit</span>
             </div>
+
+            {variant.moq > 1 && (
+              <p className="text-sm text-warning bg-warning/10 border border-warning/20 rounded-lg px-3 py-2">
+                Minimum order quantity: {variant.moq} units
+              </p>
+            )}
+
+            {variant.priceTiers.length > 0 && (
+              <div>
+                <h2 className="font-display font-semibold mb-2 text-sm text-text-secondary">Bulk Pricing</h2>
+                <PriceTierTable priceTiers={variant.priceTiers} basePrice={effectivePrice} />
+              </div>
+            )}
 
             {product.description && <p className="text-text-secondary leading-relaxed">{product.description}</p>}
 
@@ -144,6 +159,8 @@ export function VariantSwitcher({ product, benefits, shippingFee }: Props) {
               price={effectivePrice}
               imageUrl={variant.imageUrl}
               stock={variant.stock}
+              moq={variant.moq}
+              priceTiers={variant.priceTiers}
               addOns={product.addOns}
               addOnReminder={product.addOnReminder}
             />
