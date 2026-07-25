@@ -28,7 +28,15 @@ export function SiteChrome({ announcementEnabled, announcementText, children }: 
     <>
       <AnnouncementBar enabled={announcementEnabled} text={announcementText} />
       <Navbar />
-      <main className="flex-1">{children}</main>
+      {/* Same route-change entrance as the admin shell — keyed on pathname
+          so it replays per navigation. Storefront pages mostly animate their
+          own content with <Animate>, but that only covers pages that
+          remembered to; this makes the arrival itself consistent everywhere. */}
+      <main className="flex-1">
+        <div key={pathname} className="animate-page-enter">
+          {children}
+        </div>
+      </main>
       <Footer />
       <WhatsAppButton />
     </>

@@ -140,6 +140,43 @@ h1, h2, h3, h4, h5, h6 {
   transform-origin: center;
 }
 
+/* Route-change transition. Applied once at the layout level (keyed on
+   pathname) so every page gets the same entrance instead of each page
+   remembering to animate itself — which is exactly how they drifted apart:
+   some used <Animate>, some only FadeSwap (which handles in-page filter
+   swaps, not route entry), and several had nothing and simply popped in.
+
+   Deliberately shorter and shallower than <Animate>'s 24px/0.5s content
+   reveals: a page arriving shouldn't upstage the content animating inside
+   it, and anything longer makes navigation feel sluggish. Same easing as
+   Animate so it reads as one system. */
+@keyframes page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-page-enter {
+  animation: page-enter 0.26s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Honour the OS "reduce motion" setting for every animation in the app, not
+   just this one — vestibular triggers aren't a style preference. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 .scrollbar-hide {
   -ms-overflow-style: none;
   scrollbar-width: none;

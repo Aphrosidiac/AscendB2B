@@ -117,7 +117,15 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
       {/* Main content — aside is fixed (out of flow) at every breakpoint
           now, so this needs its own left margin to clear it on desktop
           instead of relying on flexbox to share the row with aside. */}
-      <main className="flex-1 lg:ml-64 p-4 sm:p-6 lg:p-8 bg-background overflow-auto pt-18 lg:pt-8 min-h-screen">{children}</main>
+      {/* Keyed on pathname so React remounts this subtree on every route
+          change, which is what replays the entrance animation. Without the
+          key the class is already applied and the animation never re-fires,
+          so pages would keep popping in. */}
+      <main className="flex-1 lg:ml-64 p-4 sm:p-6 lg:p-8 bg-background overflow-auto pt-18 lg:pt-8 min-h-screen">
+        <div key={pathname} className="animate-page-enter">
+          {children}
+        </div>
+      </main>
     </div>
   );
 }
