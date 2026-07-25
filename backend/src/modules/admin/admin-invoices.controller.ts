@@ -106,7 +106,18 @@ export async function adminGenerateInvoice(fastify: FastifyInstance, body: unkno
     include: {
       orderItem: { select: { unitPrice: true } },
       invoiceItem: { select: { id: true } },
-      shipment: { select: { order: { select: { companyId: true, id: true } } } },
+      shipment: {
+        select: {
+          order: {
+            select: {
+              id: true,
+              orderNumber: true,
+              companyId: true,
+              prepaidInvoice: { select: { id: true, invoiceNumber: true, void: true } },
+            },
+          },
+        },
+      },
     },
   });
 
@@ -116,6 +127,18 @@ export async function adminGenerateInvoice(fastify: FastifyInstance, body: unkno
   const alreadyBilled = shipmentItems.filter((si) => si.invoiceItem);
   if (alreadyBilled.length > 0) {
     throw { statusCode: 400, message: `Shipment item(s) ${alreadyBilled.map((si) => si.id).join(', ')} are already invoiced` };
+  }
+  // An order paid in full via pay-now at checkout (a zero-item Invoice, see
+  // Order.prepaidInvoiceId) has already been billed — generating a normal
+  // invoice for its shipment items would double-bill the same goods, unless
+  // that prepaid invoice was later voided (e.g. a refund).
+  const alreadyPrepaid = shipmentItems.filter((si) => si.shipment.order.prepaidInvoice && !si.shipment.order.prepaidInvoice.void);
+  if (alreadyPrepaid.length > 0) {
+    const orderNumbers = [...new Set(alreadyPrepaid.map((si) => si.shipment.order.orderNumber))];
+    throw {
+      statusCode: 400,
+      message: `Order(s) ${orderNumbers.join(', ')} were already paid via pay-now at checkout — void the prepaid invoice first if these goods genuinely need re-invoicing.`,
+    };
   }
   const companyIds = new Set(shipmentItems.map((si) => si.shipment.order.companyId));
   if (companyIds.size > 1) {
@@ -129,13 +152,6 @@ export async function adminGenerateInvoice(fastify: FastifyInstance, body: unkno
   const now = new Date();
   const dueDate = new Date(now.getTime() + CREDIT_TERMS_DAYS[company.creditTerms] * 24 * 60 * 60 * 1000);
 
-  // KNOWN GAP (see decision #3 in the task brief / orders.controller.ts): if
-  // any of these shipment items trace back to an order that was paid via a
-  // zero-item pay-now Invoice, this generates a SECOND, real invoice for the
-  // same goods with no schema-level link warning the admin — Invoice has no
-  // FK to Order, so there's nothing to check against here. Left as a manual
-  // process concern; a real fix needs a schema change (e.g. Invoice.orderId
-  // or a join table) that's out of scope for this pass.
   const MAX_ATTEMPTS = 3;
   for (let attempt = 1; ; attempt++) {
     try {

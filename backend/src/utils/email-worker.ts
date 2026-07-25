@@ -39,19 +39,11 @@ const ORDER_INCLUDE = {
 // gap this stems from (no Order<->Invoice link at all).
 async function findPayNowPayment(
   fastify: FastifyInstance,
-  order: { companyId: string; total: number; createdAt: Date }
+  order: { prepaidInvoiceId: string | null }
 ): Promise<Payment | null> {
-  const invoice = await fastify.prisma.invoice.findFirst({
-    where: {
-      companyId: order.companyId,
-      total: order.total,
-      items: { none: {} },
-      issueDate: {
-        gte: new Date(order.createdAt.getTime() - 5 * 60 * 1000),
-        lte: new Date(order.createdAt.getTime() + 5 * 60 * 1000),
-      },
-    },
-    orderBy: { issueDate: 'desc' },
+  if (!order.prepaidInvoiceId) return null;
+  const invoice = await fastify.prisma.invoice.findUnique({
+    where: { id: order.prepaidInvoiceId },
     include: { payments: { orderBy: { paidAt: 'desc' }, take: 1 } },
   });
   return invoice?.payments[0] ?? null;

@@ -252,12 +252,11 @@ export async function createOrder(fastify: FastifyInstance, companyId: string, b
       // for this order's line items can only be raised once something has
       // actually shipped (InvoiceItem.shipmentItemId is required+unique), and
       // nothing has at order-creation time. `total` is set directly instead.
-      //
-      // KNOWN GAP: this Invoice has no FK back to `created` (Invoice belongs
-      // to Company, not Order, per the ERD's shipment/invoice decoupling) —
-      // there is nothing stopping a LATER shipment-triggered invoice for this
-      // same order's items from being raised on top of this one, double
-      // billing on paper. Not solved here; see admin-invoices.controller.ts.
+      // `created.prepaidInvoiceId` links back to it so the email worker and
+      // admin invoice generation can find "the payment for this order"
+      // directly instead of guessing — see Invoice.prepaidForOrder in the
+      // schema for why this is a one-off link rather than the general
+      // Invoice-belongs-to-Company shape.
       let invoice: { id: string; invoiceNumber: string } | undefined;
       if (data.payNow) {
         const invoiceNumber = await generateInvoiceNumber(tx);
@@ -265,6 +264,8 @@ export async function createOrder(fastify: FastifyInstance, companyId: string, b
           data: { invoiceNumber, companyId, issueDate: now, dueDate: now, total },
           select: { id: true, invoiceNumber: true },
         });
+        created.prepaidInvoiceId = invoice.id;
+        await tx.order.update({ where: { id: created.id }, data: { prepaidInvoiceId: invoice.id } });
       }
 
       return { order: created, invoice };
