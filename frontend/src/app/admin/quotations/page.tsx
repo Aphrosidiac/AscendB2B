@@ -9,6 +9,7 @@ import { QUOTATION_FILTER_OPTIONS, QUOTATION_STATUS_LABELS, QUOTATION_STATUS_COL
 import { Badge } from '@/components/ui/Badge';
 import { StatusFilterPills } from '@/components/orders/StatusFilterPills';
 import { FadeSwap } from '@/components/orders/FadeSwap';
+import { getQuoteValidity, ValidityChip } from '@/components/quotations/QuotationProgress';
 import type { Quotation, QuotationStatus } from '@/types';
 
 type FilterValue = QuotationStatus | '';
@@ -61,22 +62,28 @@ export default function AdminQuotationsPage() {
                 </tr>
               </thead>
               <tbody>
-                {quotations.map((q) => (
-                  <tr key={q.id} className="border-b border-border last:border-0 hover:bg-surface-elevated/50">
-                    <td className="px-4 py-3">
-                      <Link href={`/admin/quotations/${q.id}`} className="font-display font-semibold hover:underline cursor-pointer">{q.quoteNumber}</Link>
-                    </td>
-                    <td className="px-4 py-3">
-                      <p className="font-medium">{q.company?.name ?? '—'}</p>
-                      <p className="text-xs text-text-muted">{q.company?.email}</p>
-                    </td>
-                    <td className="px-4 py-3 text-text-secondary text-xs">{formatDate(q.validUntil)}</td>
-                    <td className="px-4 py-3 text-right font-semibold">{formatPrice(q.total)}</td>
-                    <td className="px-4 py-3 text-center">
-                      <Badge className={QUOTATION_STATUS_COLORS[q.status]}>{QUOTATION_STATUS_LABELS[q.status]}</Badge>
-                    </td>
-                  </tr>
-                ))}
+                {quotations.map((q) => {
+                  const validity = getQuoteValidity(q.status, q.validUntil);
+                  return (
+                    <tr key={q.id} className="border-b border-border last:border-0 hover:bg-surface-elevated/50">
+                      <td className="px-4 py-3">
+                        <Link href={`/admin/quotations/${q.id}`} className="font-display font-semibold hover:underline cursor-pointer">{q.quoteNumber}</Link>
+                      </td>
+                      <td className="px-4 py-3">
+                        <p className="font-medium">{q.company?.name ?? '—'}</p>
+                        <p className="text-xs text-text-muted">{q.company?.email}</p>
+                      </td>
+                      <td className="px-4 py-3">
+                        <p className="text-text-secondary text-xs">{formatDate(q.validUntil).split(',')[0]}</p>
+                        {!validity.settled && <ValidityChip validity={validity} className="mt-1" />}
+                      </td>
+                      <td className="px-4 py-3 text-right font-semibold tabular-nums">{formatPrice(q.total)}</td>
+                      <td className="px-4 py-3 text-center">
+                        <Badge className={QUOTATION_STATUS_COLORS[q.status]}>{QUOTATION_STATUS_LABELS[q.status]}</Badge>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

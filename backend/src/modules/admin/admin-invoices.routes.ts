@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import {
   adminListInvoices,
+  adminListUnbilled,
   adminGetInvoice,
   adminGenerateInvoice,
   adminRecordPayment,
@@ -16,6 +17,11 @@ export default async function adminInvoiceRoutes(fastify: FastifyInstance) {
 
   fastify.post('/', async (request) => {
     return adminGenerateInvoice(fastify, request.body);
+  });
+
+  // Registered before '/:id' so "unbilled" isn't swallowed as an invoice id.
+  fastify.get('/unbilled', async (request) => {
+    return adminListUnbilled(fastify, request.query as Record<string, string>);
   });
 
   fastify.get<{ Params: { id: string } }>('/:id', async (request) => {

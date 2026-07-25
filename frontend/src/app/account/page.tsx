@@ -1,13 +1,15 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Building2, MapPin, Package, FileText, LogOut } from 'lucide-react';
+import { Building2, MapPin, Package, FileText, LogOut, Receipt, TriangleAlert } from 'lucide-react';
 import { useCompanyAuth } from '@/hooks/useCompanyAuth';
+import { listCompanyInvoices } from '@/lib/api';
+import { summariseInvoices } from '@/lib/invoices';
 import { Animate, Stagger } from '@/components/ui/Animate';
 import { Button } from '@/components/ui/Button';
-import { formatDate } from '@/lib/utils';
+import { formatDate, formatPrice, cn } from '@/lib/utils';
 
 const CREDIT_TERMS_LABELS: Record<string, string> = {
   PREPAID: 'Prepaid',
@@ -22,17 +24,31 @@ const CREDIT_TERMS_LABELS: Record<string, string> = {
 // mirroring the /account/addresses convention established here.
 const QUICK_LINKS = [
   { href: '/account/orders', label: 'Orders', description: 'Track order status and history', icon: Package },
+  { href: '/account/invoices', label: 'Invoices', description: 'See what you owe and when it falls due', icon: Receipt },
   { href: '/account/quotations', label: 'Quotations', description: 'Request and review quotes', icon: FileText },
   { href: '/account/addresses', label: 'Addresses', description: 'Manage saved shipping addresses', icon: MapPin },
 ];
 
 export default function AccountPage() {
   const router = useRouter();
-  const { company, loading, isAuthenticated, logout } = useCompanyAuth();
+  const { token, company, loading, isAuthenticated, logout } = useCompanyAuth();
+
+  // "What do I owe" is the first thing a credit-terms buyer wants off this
+  // screen, so the balance is surfaced on landing rather than only one click
+  // deep. Derived client-side — the company invoice endpoint returns no
+  // server-side rollup (see backend/src/modules/companies/company-invoices.controller.ts).
+  const [balance, setBalance] = useState<{ outstanding: number; overdue: number; overdueCount: number } | null>(null);
 
   useEffect(() => {
     if (!loading && !isAuthenticated) router.push('/login?redirect=/account');
   }, [loading, isAuthenticated, router]);
+
+  useEffect(() => {
+    if (!token) return;
+    listCompanyInvoices(token, { limit: '100' })
+      .then((res) => setBalance(summariseInvoices(res.data)))
+      .catch(() => {});
+  }, [token]);
 
   if (loading || !isAuthenticated || !company) return null;
 
@@ -60,8 +76,31 @@ export default function AccountPage() {
         </div>
       </Animate>
 
+      {balance && balance.overdue > 0 && (
+        <Animate variant="fadeUp" delay={0.03} className="mb-6">
+          <Link
+            href="/account/invoices"
+            className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3.5 text-danger hover:border-red-300 transition-colors"
+          >
+            <TriangleAlert className="w-5 h-5 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-display font-semibold text-sm">
+                {formatPrice(balance.overdue)} overdue across {balance.overdueCount} invoice{balance.overdueCount === 1 ? '' : 's'}
+              </p>
+              <p className="text-sm opacity-90 mt-0.5">Review your invoices and settle the outstanding balance.</p>
+            </div>
+          </Link>
+        </Animate>
+      )}
+
       <Animate variant="fadeUp" delay={0.05}>
-        <div className="bg-surface rounded-xl border border-border p-5 sm:p-6 mb-6 grid sm:grid-cols-3 gap-4">
+        <div className="bg-surface rounded-xl border border-border p-5 sm:p-6 mb-6 grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wider text-text-muted mb-1">Outstanding</p>
+            <p className={cn('font-display font-semibold text-lg tabular-nums', balance && balance.overdue > 0 && 'text-danger')}>
+              {balance ? formatPrice(balance.outstanding) : '—'}
+            </p>
+          </div>
           <div>
             <p className="text-xs font-medium uppercase tracking-wider text-text-muted mb-1">Credit Terms</p>
             <p className="font-display font-semibold text-lg">{CREDIT_TERMS_LABELS[company.creditTerms] ?? company.creditTerms}</p>
@@ -77,20 +116,33 @@ export default function AccountPage() {
         </div>
       </Animate>
 
-      <Stagger className="grid sm:grid-cols-3 gap-4" stagger={0.06}>
-        {QUICK_LINKS.map(({ href, label, description, icon: Icon }) => (
-          <Link
-            key={href}
-            href={href}
-            className="bg-surface rounded-xl border border-border p-5 hover:border-border-hover hover:shadow-sm transition-all group"
-          >
-            <div className="w-10 h-10 rounded-lg bg-surface-elevated flex items-center justify-center mb-3 group-hover:bg-primary group-hover:text-white transition-colors">
-              <Icon className="w-5 h-5" />
-            </div>
-            <p className="font-display font-semibold mb-1">{label}</p>
-            <p className="text-sm text-text-secondary">{description}</p>
-          </Link>
-        ))}
+      <Stagger className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4" stagger={0.06}>
+        {QUICK_LINKS.map(({ href, label, description, icon: Icon }) => {
+          const isInvoices = href === '/account/invoices';
+          return (
+            <Link
+              key={href}
+              href={href}
+              className="bg-surface rounded-xl border border-border p-5 hover:border-border-hover hover:shadow-sm transition-all group flex flex-col"
+            >
+              <div className="w-10 h-10 rounded-lg bg-surface-elevated flex items-center justify-center mb-3 group-hover:bg-primary group-hover:text-white transition-colors">
+                <Icon className="w-5 h-5" />
+              </div>
+              <p className="font-display font-semibold mb-1">{label}</p>
+              <p className="text-sm text-text-secondary">{description}</p>
+              {isInvoices && balance && (
+                <p
+                  className={cn(
+                    'text-sm font-display font-semibold mt-3 pt-3 border-t border-border tabular-nums',
+                    balance.overdue > 0 ? 'text-danger' : 'text-text-primary'
+                  )}
+                >
+                  {formatPrice(balance.outstanding)} outstanding
+                </p>
+              )}
+            </Link>
+          );
+        })}
       </Stagger>
     </div>
   );

@@ -321,6 +321,10 @@ export async function listMyOrders(fastify: FastifyInstance, companyId: string, 
   const { page, limit, skip } = getPaginationParams(query);
   const where: Record<string, unknown> = { companyId, deletedAt: null };
   if (query.status) where.status = query.status;
+  // Resolves "which order did my accepted quote become" in one lookup rather
+  // than paging through recent orders. Order.quotationId is @unique, and the
+  // companyId scope above still applies, so this can't reach anyone else's.
+  if (query.quotationId) where.quotationId = query.quotationId;
 
   const [orders, total] = await Promise.all([
     fastify.prisma.order.findMany({

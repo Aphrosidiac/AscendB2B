@@ -12,6 +12,9 @@ import type {
   CompanyOrder,
   Quotation,
   Invoice,
+  InvoiceReceivablesSummary,
+  UnbilledCompanyRow,
+  UnbilledItem,
   AdminOrder,
   AdminShipment,
   PreorderCampaign,
@@ -345,8 +348,13 @@ export const rejectCompanyQuotation = (token: string, id: string) =>
 // See backend/src/modules/companies/company-invoices.controller.ts.
 // ---------------------------------------------------------------------------
 
+// `summary` is the company's account-wide balance (every invoice, not just
+// the page fetched); `status` filters server-side using the same definition
+// as the admin list. Params: status, orderId, page, limit.
 export const listCompanyInvoices = (token: string, params?: Record<string, string>) =>
-  api.get<PaginatedResponse<Invoice>>('/api/v1/companies/invoices', { ...authHeader(token), params }).then((r) => r.data);
+  api.get<PaginatedResponse<Invoice> & { summary: InvoiceReceivablesSummary }>(
+    '/api/v1/companies/invoices', { ...authHeader(token), params }
+  ).then((r) => r.data);
 
 export const getCompanyInvoice = (token: string, id: string) =>
   api.get<Invoice>(`/api/v1/companies/invoices/${id}`, authHeader(token)).then((r) => r.data);
@@ -356,8 +364,12 @@ export const getCompanyInvoice = (token: string, id: string) =>
 // See backend/src/modules/admin/admin-shipments.controller.ts.
 // ---------------------------------------------------------------------------
 
+// `status`: PENDING (not yet shipped) | SHIPPED. Results come back
+// unshipped-first so the worklist opens on what still needs doing.
 export const adminListShipments = (token: string, params?: Record<string, string>) =>
-  api.get<PaginatedResponse<AdminShipment>>('/api/v1/admin/shipments', { ...authHeader(token), params }).then((r) => r.data);
+  api.get<PaginatedResponse<AdminShipment> & { summary: { pendingCount: number } }>(
+    '/api/v1/admin/shipments', { ...authHeader(token), params }
+  ).then((r) => r.data);
 
 export const adminGetShipment = (token: string, id: string) =>
   api.get<AdminShipment>(`/api/v1/admin/shipments/${id}`, authHeader(token)).then((r) => r.data);
@@ -377,7 +389,18 @@ export const adminShipShipment = (token: string, shipmentId: string, data?: { ca
 // ---------------------------------------------------------------------------
 
 export const adminListInvoices = (token: string, params?: Record<string, string>) =>
-  api.get<PaginatedResponse<Invoice>>('/api/v1/admin/invoices', { ...authHeader(token), params }).then((r) => r.data);
+  api.get<PaginatedResponse<Invoice> & { summary: InvoiceReceivablesSummary }>(
+    '/api/v1/admin/invoices', { ...authHeader(token), params }
+  ).then((r) => r.data);
+
+// No companyId -> "who is owed an invoice", grouped per company.
+// With companyId -> that company's unbilled shipment items across ALL their
+// orders, which is what makes a consolidated (cross-order) invoice possible.
+export const adminListUnbilled = (token: string, companyId?: string) =>
+  api.get<{ companies?: UnbilledCompanyRow[]; items?: UnbilledItem[] }>(
+    '/api/v1/admin/invoices/unbilled',
+    { ...authHeader(token), params: companyId ? { companyId } : undefined }
+  ).then((r) => r.data);
 
 export const adminGetInvoice = (token: string, id: string) =>
   api.get<Invoice>(`/api/v1/admin/invoices/${id}`, authHeader(token)).then((r) => r.data);

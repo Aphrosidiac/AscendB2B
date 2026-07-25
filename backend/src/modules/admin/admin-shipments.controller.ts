@@ -16,22 +16,46 @@ export async function adminListShipments(fastify: FastifyInstance, query: Record
   const { page, limit, skip } = getPaginationParams(query);
   const where: Record<string, unknown> = {};
   if (query.orderId) where.orderId = query.orderId;
+  // shippedAt is the only real state a Shipment has — null means it's still
+  // being packed, set means it's gone out. That split is the whole point of
+  // a shipments worklist ("what still needs to go out today").
+  if (query.status === 'PENDING') where.shippedAt = null;
+  if (query.status === 'SHIPPED') where.shippedAt = { not: null };
+  if (query.search) {
+    where.OR = [
+      { shipmentNumber: { contains: query.search, mode: 'insensitive' } },
+      { trackingNumber: { contains: query.search, mode: 'insensitive' } },
+      { order: { orderNumber: { contains: query.search, mode: 'insensitive' } } },
+      { order: { company: { name: { contains: query.search, mode: 'insensitive' } } } },
+    ];
+  }
 
-  const [shipments, total] = await Promise.all([
+  const [shipments, total, pendingCount] = await Promise.all([
     fastify.prisma.shipment.findMany({
       where,
       include: {
-        order: { select: { id: true, orderNumber: true, companyId: true } },
-        items: true,
+        order: {
+          select: {
+            id: true,
+            orderNumber: true,
+            companyId: true,
+            company: { select: { name: true } },
+            shippingAddress: { select: { label: true, city: true, state: true } },
+          },
+        },
+        items: { select: { id: true, quantity: true } },
       },
-      orderBy: { createdAt: 'desc' },
+      // Unshipped first, then most recent — a worklist should open on what
+      // still needs doing, not on what's already finished.
+      orderBy: [{ shippedAt: { sort: 'asc', nulls: 'first' } }, { createdAt: 'desc' }],
       skip,
       take: limit,
     }),
     fastify.prisma.shipment.count({ where }),
+    fastify.prisma.shipment.count({ where: { shippedAt: null } }),
   ]);
 
-  return paginatedResponse(shipments, total, page, limit);
+  return { ...paginatedResponse(shipments, total, page, limit), summary: { pendingCount } };
 }
 
 export async function adminGetShipment(fastify: FastifyInstance, id: string) {

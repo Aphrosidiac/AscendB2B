@@ -421,8 +421,9 @@ export interface Quotation {
   createdAt: string;
   updatedAt: string;
   items: QuotationItem[];
-  // Admin list/detail only.
-  company?: { id: string; name: string; email: string };
+  // Admin list/detail only. The detail endpoint (requireQuotation) also
+  // returns contactName/phone; the list endpoint doesn't, hence optional.
+  company?: { id: string; name: string; email: string; contactName?: string; phone?: string };
 }
 
 // ---------------------------------------------------------------------------
@@ -481,6 +482,43 @@ export interface Invoice {
   company?: { id: string; name: string; creditTerms: CreditTerms };
 }
 
+// Business-wide receivables rollup on the admin invoices list — intentionally
+// NOT scoped by the caller's filters (see outstandingSummary in
+// admin-invoices.controller.ts).
+export interface InvoiceReceivablesSummary {
+  outstandingAmount: number;
+  overdueAmount: number;
+  outstandingCount: number;
+  overdueCount: number;
+}
+
+// A ShipmentItem that has shipped but has no InvoiceItem yet — the raw
+// material for a consolidated invoice.
+export interface UnbilledItem {
+  id: string;
+  quantity: number;
+  amount: number;
+  orderItem: {
+    unitPrice: number;
+    variant: { code: string; size: string | null; product: { name: string } } | null;
+    kit: { name: string } | null;
+  };
+  batch: { batchNumber: string };
+  shipment: {
+    id: string;
+    shipmentNumber: string;
+    shippedAt: string | null;
+    order: { id: string; orderNumber: string; company: { id: string; name: string; creditTerms: CreditTerms } };
+  };
+}
+
+export interface UnbilledCompanyRow {
+  company: { id: string; name: string; creditTerms: CreditTerms };
+  itemCount: number;
+  orderCount: number;
+  amount: number;
+}
+
 // ---------------------------------------------------------------------------
 // Admin — orders (backend/src/modules/admin/admin-orders.controller.ts). Same
 // underlying Order/OrderStatus as the company-facing CompanyOrder above —
@@ -505,9 +543,18 @@ export interface AdminShipment {
   carrier: string | null;
   trackingNumber: string | null;
   createdAt: string;
-  // List endpoint's shallow order ref; detail endpoint's fuller one with
-  // company name. Both optional since callers only ever have one or the other.
-  order?: { id: string; orderNumber: string; companyId: string } | { id: string; orderNumber: string; company: { name: string } };
+  // The list endpoint returns company + shipping address (the fulfilment
+  // worklist needs "who and where"); the detail endpoint returns the fuller
+  // order. Both branches optional since a caller only ever has one.
+  order?:
+    | {
+        id: string;
+        orderNumber: string;
+        companyId: string;
+        company: { name: string };
+        shippingAddress: { label: string; city: string; state: string } | null;
+      }
+    | { id: string; orderNumber: string; company: { name: string } };
   items: CompanyOrderShipmentItem[];
 }
 

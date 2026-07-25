@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { ArrowLeft, FileText, Plus, X, Trash2 } from 'lucide-react';
 import { useCompanyAuth } from '@/hooks/useCompanyAuth';
 import { listCompanyQuotations, requestQuotation, getProducts } from '@/lib/api';
-import { formatPrice, formatDate } from '@/lib/utils';
+import { formatPrice, formatDate, cn } from '@/lib/utils';
 import { QUOTATION_STATUS_LABELS, QUOTATION_STATUS_COLORS, QUOTATION_FILTER_OPTIONS } from '@/lib/constants';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/Input';
 import { Animate, Stagger } from '@/components/ui/Animate';
 import { StatusFilterPills } from '@/components/orders/StatusFilterPills';
 import { FadeSwap } from '@/components/orders/FadeSwap';
+import { getQuoteValidity, ValidityChip } from '@/components/quotations/QuotationProgress';
 import type { Quotation, QuotationStatus, Product } from '@/types';
 
 type FilterValue = QuotationStatus | '';
@@ -252,29 +253,39 @@ export default function QuotationsListPage() {
           </div>
         ) : (
           <Stagger className="space-y-3" stagger={0.06}>
-            {quotations.map((quotation) => (
-              <Link
-                key={quotation.id}
-                href={`/account/quotations/${quotation.id}`}
-                className="block bg-surface rounded-xl border border-border p-4 sm:p-5 hover:border-border-hover hover:shadow-sm transition-all"
-              >
-                <div className="flex items-start justify-between gap-3 mb-2">
-                  <div>
-                    <p className="font-display font-bold">{quotation.quoteNumber}</p>
-                    <p className="text-xs text-text-muted">Requested {formatDate(quotation.createdAt)}</p>
+            {quotations.map((quotation) => {
+              const validity = getQuoteValidity(quotation.status, quotation.validUntil);
+              return (
+                <Link
+                  key={quotation.id}
+                  href={`/account/quotations/${quotation.id}`}
+                  className={cn(
+                    'block bg-surface rounded-xl border p-4 sm:p-5 hover:shadow-sm transition-all',
+                    validity.expired ? 'border-red-200 hover:border-red-300' : 'border-border hover:border-border-hover'
+                  )}
+                >
+                  <div className="flex items-start justify-between gap-3 mb-2">
+                    <div>
+                      <p className="font-display font-bold">{quotation.quoteNumber}</p>
+                      <p className="text-xs text-text-muted">Requested {formatDate(quotation.createdAt)}</p>
+                    </div>
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                      {!validity.settled && <ValidityChip validity={validity} />}
+                      <Badge className={QUOTATION_STATUS_COLORS[quotation.status]}>
+                        {QUOTATION_STATUS_LABELS[quotation.status] ?? quotation.status}
+                      </Badge>
+                    </div>
                   </div>
-                  <Badge className={QUOTATION_STATUS_COLORS[quotation.status]}>
-                    {QUOTATION_STATUS_LABELS[quotation.status] ?? quotation.status}
-                  </Badge>
-                </div>
-                <div className="flex items-center justify-between pt-2 border-t border-border">
-                  <p className="text-sm text-text-secondary">
-                    {quotation.items.length} item{quotation.items.length === 1 ? '' : 's'} &middot; Valid until {formatDate(quotation.validUntil)}
-                  </p>
-                  <p className="font-display font-semibold">{formatPrice(quotation.total)}</p>
-                </div>
-              </Link>
-            ))}
+                  <div className="flex items-center justify-between pt-2 border-t border-border">
+                    <p className="text-sm text-text-secondary">
+                      {quotation.items.length} item{quotation.items.length === 1 ? '' : 's'} &middot;{' '}
+                      {validity.expired ? 'Expired' : 'Valid until'} {formatDate(quotation.validUntil)}
+                    </p>
+                    <p className="font-display font-semibold">{formatPrice(quotation.total)}</p>
+                  </div>
+                </Link>
+              );
+            })}
           </Stagger>
         )}
       </FadeSwap>

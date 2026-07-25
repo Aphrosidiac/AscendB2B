@@ -68,7 +68,7 @@ function GenerateInvoiceModal({ order, token, alreadyInvoicedIds, onClose, onGen
       onGenerated();
     } catch (err: unknown) {
       const message = err && typeof err === 'object' && 'response' in err
-        ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
+        ? (err as { response?: { data?: { error?: string; message?: string } } }).response?.data?.error ?? (err as { response?: { data?: { message?: string } } }).response?.data?.message
         : undefined;
       setError(message ?? 'Failed to generate invoice');
     } finally {

@@ -32,6 +32,11 @@ export async function adminListOrders(fastify: FastifyInstance, query: Record<st
   const where: Record<string, unknown> = query.status === 'DELETED'
     ? { deletedAt: { not: null } }
     : { deletedAt: null, ...(query.status ? { status: query.status } : {}) };
+  if (query.companyId) where.companyId = query.companyId;
+  // Lets a quotation page resolve "which order did this quote become" in one
+  // lookup. Order.quotationId is @unique, so this matches at most one row —
+  // without it the caller has to page through recent orders hunting for it.
+  if (query.quotationId) where.quotationId = query.quotationId;
   if (query.search) {
     where.OR = [
       { orderNumber: { contains: query.search, mode: 'insensitive' } },

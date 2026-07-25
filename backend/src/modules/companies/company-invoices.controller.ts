@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { getPaginationParams, paginatedResponse } from '../../utils/pagination.js';
-import { computeInvoiceStatus } from '../admin/admin-invoices.controller.js';
+import { computeInvoiceStatus, invoiceIdsMatchingStatus, outstandingSummary } from '../admin/admin-invoices.controller.js';
 
 // Company-scoped mirror of admin-invoices.controller.ts's list/get — a
 // company can only ever see its own invoices, and paid/void/overdue status is
@@ -18,6 +18,12 @@ export async function listMyInvoices(fastify: FastifyInstance, companyId: string
   // to this order.
   if (query.orderId) {
     where.items = { some: { shipmentItem: { shipment: { orderId: query.orderId } } } };
+  }
+  // Same server-side status filtering the admin list uses — scoped to this
+  // company. Without it the page could only filter whatever it had already
+  // fetched, which breaks as soon as a company has more than one page.
+  if (query.status) {
+    where.id = { in: await invoiceIdsMatchingStatus(fastify, query.status, companyId) };
   }
 
   const [invoices, total] = await Promise.all([
@@ -39,7 +45,9 @@ export async function listMyInvoices(fastify: FastifyInstance, companyId: string
     return { ...invoice, paidAmount, status: computeInvoiceStatus(invoice, paidAmount) };
   });
 
-  return paginatedResponse(withStatus, total, page, limit);
+  // Account-wide, deliberately not scoped to the current filter/page — "what
+  // I owe" has to be the real balance, not a subtotal of what's on screen.
+  return { ...paginatedResponse(withStatus, total, page, limit), summary: await outstandingSummary(fastify, companyId) };
 }
 
 export async function getMyInvoice(fastify: FastifyInstance, companyId: string, id: string) {
@@ -57,7 +65,7 @@ export async function getMyInvoice(fastify: FastifyInstance, companyId: string, 
                   kit: { select: { name: true } },
                 },
               },
-              shipment: { select: { id: true, shipmentNumber: true, orderId: true } },
+              shipment: { select: { id: true, shipmentNumber: true, orderId: true, order: { select: { orderNumber: true } } } },
             },
           },
         },

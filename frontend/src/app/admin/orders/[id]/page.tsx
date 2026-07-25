@@ -56,7 +56,7 @@ function StatusChangePanel({ order, token, onUpdated }: { order: AdminOrder; tok
       onUpdated();
     } catch (err: unknown) {
       const message = err && typeof err === 'object' && 'response' in err
-        ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
+        ? (err as { response?: { data?: { error?: string; message?: string } } }).response?.data?.error ?? (err as { response?: { data?: { message?: string } } }).response?.data?.message
         : undefined;
       setError(message ?? 'Failed to update status');
     } finally {
