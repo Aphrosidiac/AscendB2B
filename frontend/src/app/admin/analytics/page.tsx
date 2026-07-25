@@ -20,9 +20,8 @@ interface AnalyticsData {
   summary: {
     totalRevenue: number;
     totalOrders: number;
-    paidOrders: number;
-    failedOrders: number;
-    conversionRate: number;
+    completedOrders: number;
+    cancelledOrders: number;
     avgOrderValue: number;
   };
   dailyRevenue: { date: string; revenue: number; orders: number }[];
@@ -37,25 +36,37 @@ const PERIOD_OPTIONS = [
   { label: '90d', days: 90 },
 ] as const;
 
+// Full B2B lifecycle — see OrderStatus in schema.prisma. No Pricing
+// Approval/Purchasing stages (stock is pre-secured via
+// PreorderCampaign/Batch), so this list is the complete set.
 const STATUS_COLORS: Record<string, string> = {
   PENDING: 'bg-yellow-400',
   CONFIRMED: 'bg-blue-400',
+  PACKING: 'bg-purple-400',
   SHIPPED: 'bg-indigo-400',
-  DELIVERED: 'bg-emerald-400',
+  PARTIALLY_SHIPPED: 'bg-orange-400',
+  DELIVERED: 'bg-teal-400',
+  COMPLETE: 'bg-emerald-400',
   CANCELLED: 'bg-red-400',
 };
 
 const STATUS_LABELS: Record<string, string> = {
-  PENDING: 'Pending',
+  PENDING: 'Placed',
   CONFIRMED: 'Confirmed',
+  PACKING: 'Packing',
   SHIPPED: 'Shipped',
+  PARTIALLY_SHIPPED: 'Partially Shipped',
   DELIVERED: 'Delivered',
+  COMPLETE: 'Complete',
   CANCELLED: 'Cancelled',
 };
 
+// Payment.method's WHATSAPP value now means "manually recorded payment
+// (bank transfer confirmed off-platform)", not the old B2C WhatsApp
+// checkout flow — see the PaymentMethod enum comment in schema.prisma.
 const PAYMENT_LABELS: Record<string, string> = {
   BILLPLZ: 'Online (Billplz)',
-  WHATSAPP: 'WhatsApp (Manual)',
+  WHATSAPP: 'Bank Transfer (Manual)',
 };
 
 function formatShortDate(dateStr: string): string {
@@ -146,25 +157,25 @@ export default function AdminAnalyticsPage() {
       label: 'Total Orders',
       value: summary.totalOrders.toLocaleString(),
       icon: ShoppingBag,
-      subtext: `${summary.failedOrders} failed`,
+      subtext: `${summary.cancelledOrders} cancelled`,
     },
     {
-      label: 'Paid Orders',
-      value: summary.paidOrders.toLocaleString(),
+      label: 'Completed Orders',
+      value: summary.completedOrders.toLocaleString(),
       icon: CheckCircle,
-      subtext: `${((summary.paidOrders / Math.max(summary.totalOrders, 1)) * 100).toFixed(0)}% of total`,
+      subtext: `${((summary.completedOrders / Math.max(summary.totalOrders, 1)) * 100).toFixed(0)}% of total`,
     },
     {
-      label: 'Conversion Rate',
-      value: `${summary.conversionRate.toFixed(1)}%`,
+      label: 'Completion Rate',
+      value: `${((summary.completedOrders / Math.max(summary.totalOrders, 1)) * 100).toFixed(1)}%`,
       icon: TrendingUp,
-      subtext: 'Paid / Total',
+      subtext: 'Complete / Total',
     },
     {
       label: 'Avg Order Value',
       value: formatPrice(summary.avgOrderValue),
       icon: CreditCard,
-      subtext: 'Per paid order',
+      subtext: 'Per order',
     },
   ];
 
