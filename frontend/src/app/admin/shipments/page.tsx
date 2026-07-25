@@ -2,10 +2,12 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Search, ChevronLeft, ChevronRight, Truck } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { adminListShipments } from '@/lib/api';
-import { formatShortDate } from '@/lib/utils';
+import { formatShortDate, cn } from '@/lib/utils';
+import { rowLink } from '@/lib/row-link';
 import { Badge } from '@/components/ui/Badge';
 import { StatusFilterPills } from '@/components/orders/StatusFilterPills';
 import { FadeSwap } from '@/components/orders/FadeSwap';
@@ -44,6 +46,7 @@ interface ShipmentsResponse {
 }
 
 export default function AdminShipmentsPage() {
+  const router = useRouter();
   const { token } = useAuth();
 
   const [shipments, setShipments] = useState<ShipmentRow[]>([]);
@@ -155,7 +158,14 @@ export default function AdminShipmentsPage() {
                     // Shipments tab, and a second copy would diverge.
                     const href = shipment.order ? `/admin/orders/${shipment.order.id}` : undefined;
                     return (
-                      <tr key={shipment.id} className="border-b border-border last:border-0 hover:bg-surface-elevated/50">
+                      <tr
+                        key={shipment.id}
+                        {...(href ? rowLink(() => router.push(href)) : {})}
+                        className={cn(
+                          'border-b border-border last:border-0 hover:bg-surface-elevated/50',
+                          href && 'cursor-pointer'
+                        )}
+                      >
                         <td className="px-4 py-3">
                           {href ? (
                             <Link href={href} className="font-display font-semibold hover:underline cursor-pointer">

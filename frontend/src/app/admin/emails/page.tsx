@@ -2,10 +2,11 @@
 
 import { Suspense, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { Mail, CheckCircle2, Clock, AlertTriangle, RotateCcw, ChevronLeft, ChevronRight, Eye, FileEdit, ListChecks } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { adminGetEmails, adminRetryFailedEmails, adminResendOrderEmail, adminGetOrders, adminPreviewEmail, adminSendTestEmail, adminGetSettings, adminUpdateSettings } from '@/lib/api';
+import { rowLink } from '@/lib/row-link';
 import { formatDate } from '@/lib/utils';
 import { EMAIL_TYPE_LABELS, emailStatusText } from '@/lib/email-status';
 import { Animate } from '@/components/ui/Animate';
@@ -284,6 +285,7 @@ function EmailListTab({
   loading, rows, stats, statusTab, selectStatusTab, pagination, setPage,
   retrying, retryingAll, handleRetryRow, handleRetryAll,
 }: EmailListTabProps) {
+  const router = useRouter();
   const statCards = [
     { label: 'Sent · last 7 days', value: stats?.sentLast7Days ?? 0, icon: CheckCircle2, accent: 'text-success' },
     { label: 'Pending', value: stats?.pending ?? 0, icon: Clock, accent: 'text-warning' },
@@ -369,7 +371,7 @@ function EmailListTab({
                   const { text, className } = emailStatusText(row);
                   const isRetrying = retrying === row.id;
                   return (
-                    <tr key={row.id} className="hover:bg-surface-elevated/50 transition-colors">
+                    <tr key={row.id} {...rowLink(() => router.push(`/admin/orders/${row.order.id}`))} className="hover:bg-surface-elevated/50 transition-colors cursor-pointer">
                       <td className="px-4 py-3 whitespace-nowrap">
                         <Link href={`/admin/orders?orderId=${row.order.id}`} className="font-display font-semibold hover:text-primary transition-colors">
                           {row.order.orderNumber}

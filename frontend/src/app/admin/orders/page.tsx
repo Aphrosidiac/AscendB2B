@@ -2,10 +2,12 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Search } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { adminGetOrders } from '@/lib/api';
 import { formatPrice, formatDate } from '@/lib/utils';
+import { rowLink } from '@/lib/row-link';
 import { Badge } from '@/components/ui/Badge';
 import { StatusFilterPills } from '@/components/orders/StatusFilterPills';
 import { FadeSwap } from '@/components/orders/FadeSwap';
@@ -15,6 +17,7 @@ import type { AdminOrder, CompanyOrderStatus } from '@/types';
 type FilterValue = CompanyOrderStatus | '';
 
 export default function AdminOrdersPage() {
+  const router = useRouter();
   const { token } = useAuth();
   const [orders, setOrders] = useState<AdminOrder[]>([]);
   const [loading, setLoading] = useState(true);
@@ -88,7 +91,7 @@ export default function AdminOrdersPage() {
               </thead>
               <tbody>
                 {orders.map((order) => (
-                  <tr key={order.id} className="border-b border-border last:border-0 hover:bg-surface-elevated/50">
+                  <tr key={order.id} {...rowLink(() => router.push(`/admin/orders/${order.id}`))} className="border-b border-border last:border-0 hover:bg-surface-elevated/50 cursor-pointer">
                     <td className="px-4 py-3">
                       <Link href={`/admin/orders/${order.id}`} className="font-display font-semibold hover:underline cursor-pointer">
                         {order.orderNumber}

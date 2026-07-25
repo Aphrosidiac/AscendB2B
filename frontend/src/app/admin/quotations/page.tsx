@@ -2,9 +2,11 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
 import { adminListQuotations } from '@/lib/api';
 import { formatPrice, formatDate } from '@/lib/utils';
+import { rowLink } from '@/lib/row-link';
 import { QUOTATION_FILTER_OPTIONS, QUOTATION_STATUS_LABELS, QUOTATION_STATUS_COLORS } from '@/lib/constants';
 import { Badge } from '@/components/ui/Badge';
 import { StatusFilterPills } from '@/components/orders/StatusFilterPills';
@@ -15,6 +17,7 @@ import type { Quotation, QuotationStatus } from '@/types';
 type FilterValue = QuotationStatus | '';
 
 export default function AdminQuotationsPage() {
+  const router = useRouter();
   const { token } = useAuth();
   const [quotations, setQuotations] = useState<Quotation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -65,7 +68,7 @@ export default function AdminQuotationsPage() {
                 {quotations.map((q) => {
                   const validity = getQuoteValidity(q.status, q.validUntil);
                   return (
-                    <tr key={q.id} className="border-b border-border last:border-0 hover:bg-surface-elevated/50">
+                    <tr key={q.id} {...rowLink(() => router.push(`/admin/quotations/${q.id}`))} className="border-b border-border last:border-0 hover:bg-surface-elevated/50 cursor-pointer">
                       <td className="px-4 py-3">
                         <Link href={`/admin/quotations/${q.id}`} className="font-display font-semibold hover:underline cursor-pointer">{q.quoteNumber}</Link>
                       </td>

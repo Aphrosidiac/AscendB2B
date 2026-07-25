@@ -2,15 +2,18 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Search } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { adminListCompanies } from '@/lib/api';
+import { rowLink } from '@/lib/row-link';
 import { CREDIT_TERMS_LABELS } from '@/lib/constants';
 import { Badge } from '@/components/ui/Badge';
 import { FadeSwap } from '@/components/orders/FadeSwap';
 import type { AdminCompany } from '@/types';
 
 export default function AdminCompaniesPage() {
+  const router = useRouter();
   const { token } = useAuth();
   const [companies, setCompanies] = useState<AdminCompany[]>([]);
   const [loading, setLoading] = useState(true);
@@ -66,7 +69,7 @@ export default function AdminCompaniesPage() {
               </thead>
               <tbody>
                 {companies.map((c) => (
-                  <tr key={c.id} className="border-b border-border last:border-0 hover:bg-surface-elevated/50">
+                  <tr key={c.id} {...rowLink(() => router.push(`/admin/companies/${c.id}`))} className="border-b border-border last:border-0 hover:bg-surface-elevated/50 cursor-pointer">
                     <td className="px-4 py-3">
                       <Link href={`/admin/companies/${c.id}`} className="font-medium hover:underline cursor-pointer">{c.name}</Link>
                       <p className="text-xs text-text-muted">{c.email}</p>

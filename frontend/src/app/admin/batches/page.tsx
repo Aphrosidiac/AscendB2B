@@ -2,10 +2,12 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Plus, ChevronDown, Pencil } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { adminListBatches, adminListCampaigns, adminGetProducts } from '@/lib/api';
 import { formatDate } from '@/lib/utils';
+import { rowLink } from '@/lib/row-link';
 import { BATCH_STATUS_LABELS, BATCH_STATUS_COLORS } from '@/lib/constants';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -15,6 +17,7 @@ import type { Batch, BatchStatus, PreorderCampaign, Product } from '@/types';
 type StatusFilter = BatchStatus | 'all';
 
 export default function AdminBatchesPage() {
+  const router = useRouter();
   const { token } = useAuth();
   const [batches, setBatches] = useState<Batch[]>([]);
   const [campaigns, setCampaigns] = useState<PreorderCampaign[]>([]);
@@ -121,7 +124,7 @@ export default function AdminBatchesPage() {
               </thead>
               <tbody>
                 {batches.map((b) => (
-                  <tr key={b.id} className="border-b border-border last:border-0 hover:bg-surface-elevated/50">
+                  <tr key={b.id} {...rowLink(() => router.push(`/admin/batches/${b.id}`))} className="border-b border-border last:border-0 hover:bg-surface-elevated/50 cursor-pointer">
                     <td className="px-4 py-3 font-medium">{b.batchNumber}</td>
                     <td className="px-4 py-3 text-text-secondary text-xs">{b.variant ? `${b.variant.product.name} ${b.variant.size ?? ''}` : '—'}</td>
                     <td className="px-4 py-3 text-text-secondary text-xs">{b.campaign?.name ?? '—'}</td>

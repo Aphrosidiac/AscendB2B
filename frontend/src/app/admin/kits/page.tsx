@@ -2,10 +2,12 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Plus, Search, Pencil, ChevronDown } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { adminListKits } from '@/lib/api';
 import { formatPrice } from '@/lib/utils';
+import { rowLink } from '@/lib/row-link';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { FadeSwap } from '@/components/orders/FadeSwap';
@@ -14,6 +16,7 @@ import type { Kit } from '@/types';
 type ActiveFilter = 'all' | 'active' | 'inactive';
 
 export default function AdminKitsPage() {
+  const router = useRouter();
   const { token } = useAuth();
   const [kits, setKits] = useState<Kit[]>([]);
   const [loading, setLoading] = useState(true);
@@ -87,7 +90,7 @@ export default function AdminKitsPage() {
               </thead>
               <tbody>
                 {kits.map((k) => (
-                  <tr key={k.id} className="border-b border-border last:border-0 hover:bg-surface-elevated/50">
+                  <tr key={k.id} {...rowLink(() => router.push(`/admin/kits/${k.id}`))} className="border-b border-border last:border-0 hover:bg-surface-elevated/50 cursor-pointer">
                     <td className="px-4 py-3 font-medium">{k.name}</td>
                     <td className="px-4 py-3 text-right font-semibold">{formatPrice(k.pricePerKit)}</td>
                     <td className="px-4 py-3 text-center">{k.qtyPerKit}</td>

@@ -7,6 +7,7 @@ import { Search, Plus, ChevronLeft, ChevronRight, AlertTriangle, Wallet } from '
 import { useAuth } from '@/hooks/useAuth';
 import { adminListInvoices } from '@/lib/api';
 import { formatPrice, formatShortDate } from '@/lib/utils';
+import { rowLink } from '@/lib/row-link';
 import { INVOICE_STATUS_LABELS, INVOICE_STATUS_COLORS } from '@/lib/constants';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -190,7 +191,7 @@ export default function AdminInvoicesPage() {
                     const late = overdueLabel(invoice.dueDate, invoice.status);
                     const outstanding = invoice.total - invoice.paidAmount;
                     return (
-                      <tr key={invoice.id} className="border-b border-border last:border-0 hover:bg-surface-elevated/50">
+                      <tr key={invoice.id} {...rowLink(() => router.push(`/admin/invoices/${invoice.id}`))} className="border-b border-border last:border-0 hover:bg-surface-elevated/50 cursor-pointer">
                         <td className="px-4 py-3">
                           <Link href={`/admin/invoices/${invoice.id}`} className="font-display font-semibold hover:underline cursor-pointer">
                             {invoice.invoiceNumber}

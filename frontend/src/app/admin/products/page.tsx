@@ -2,10 +2,12 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Plus, Pencil, Search, Trash2, ArrowUp, ArrowDown, ArrowUpDown, RotateCcw, ChevronDown } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { adminGetProducts, adminUpdateProduct, adminDeleteProduct, getCategories } from '@/lib/api';
 import { formatPrice, getDefaultVariant } from '@/lib/utils';
+import { rowLink } from '@/lib/row-link';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { FeaturedOrderModal } from './FeaturedOrderModal';
@@ -80,6 +82,7 @@ function FilterSelect({
 }
 
 export default function AdminProductsPage() {
+  const router = useRouter();
   const { token } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -249,7 +252,7 @@ export default function AdminProductsPage() {
                 const activeVariants = product.variants.filter((v) => v.active);
                 const distinctPrices = new Set(activeVariants.map((v) => v.price)).size;
                 return (
-                  <tr key={product.id} className="border-b border-border last:border-0 hover:bg-surface-elevated/50">
+                  <tr key={product.id} {...rowLink(() => router.push(`/admin/products/${product.id}`))} className="border-b border-border last:border-0 hover:bg-surface-elevated/50 cursor-pointer">
                     <td className="px-4 py-3 font-medium">
                       <div className="flex items-center gap-2">
                         <div className="w-8 h-8 rounded bg-surface-elevated overflow-hidden shrink-0 flex items-center justify-center">

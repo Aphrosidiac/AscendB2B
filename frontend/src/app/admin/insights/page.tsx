@@ -2,10 +2,12 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Plus, Pencil, Trash2, Search } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { adminGetInsights, adminDeleteInsight } from '@/lib/api';
 import { formatShortDate } from '@/lib/utils';
+import { rowLink } from '@/lib/row-link';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import type { Insight } from '@/types';
@@ -13,6 +15,7 @@ import type { Insight } from '@/types';
 type StatusFilter = 'all' | 'published' | 'draft';
 
 export default function AdminInsightsPage() {
+  const router = useRouter();
   const { token } = useAuth();
   const [insights, setInsights] = useState<Insight[]>([]);
   const [loading, setLoading] = useState(true);
@@ -95,7 +98,7 @@ export default function AdminInsightsPage() {
             </thead>
             <tbody>
               {displayed.map((insight) => (
-                <tr key={insight.id} className="border-b border-border last:border-0 hover:bg-surface-elevated/50">
+                <tr key={insight.id} {...rowLink(() => router.push(`/admin/insights/${insight.id}`))} className="border-b border-border last:border-0 hover:bg-surface-elevated/50 cursor-pointer">
                   <td className="px-4 py-3 font-medium max-w-xs truncate">{insight.title}</td>
                   <td className="px-4 py-3 text-text-secondary text-xs">{insight.category}</td>
                   <td className="px-4 py-3 text-text-secondary text-xs">{insight.authorName}</td>

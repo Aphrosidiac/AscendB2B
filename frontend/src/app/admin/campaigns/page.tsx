@@ -2,10 +2,12 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Plus, Search, ChevronDown } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { adminListCampaigns } from '@/lib/api';
 import { formatDate } from '@/lib/utils';
+import { rowLink } from '@/lib/row-link';
 import { CAMPAIGN_STATUS_LABELS, CAMPAIGN_STATUS_COLORS } from '@/lib/constants';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -15,6 +17,7 @@ import type { PreorderCampaign, CampaignStatus } from '@/types';
 type StatusFilter = CampaignStatus | 'all';
 
 export default function AdminCampaignsPage() {
+  const router = useRouter();
   const { token } = useAuth();
   const [campaigns, setCampaigns] = useState<PreorderCampaign[]>([]);
   const [loading, setLoading] = useState(true);
@@ -89,7 +92,7 @@ export default function AdminCampaignsPage() {
               </thead>
               <tbody>
                 {campaigns.map((c) => (
-                  <tr key={c.id} className="border-b border-border last:border-0 hover:bg-surface-elevated/50">
+                  <tr key={c.id} {...rowLink(() => router.push(`/admin/campaigns/${c.id}`))} className="border-b border-border last:border-0 hover:bg-surface-elevated/50 cursor-pointer">
                     <td className="px-4 py-3">
                       <Link href={`/admin/campaigns/${c.id}`} className="font-medium hover:underline cursor-pointer">{c.name}</Link>
                     </td>
