@@ -21,6 +21,14 @@ export function ProductCard({ product }: ProductCardProps) {
   // price on a single-price product isn't misleading, so don't hedge it.
   const priceRange = activeVariants.length > 1 && new Set(activeVariants.map((v) => v.price)).size > 1;
 
+  // Quantity-break pricing is this catalog's main B2B differentiator but it
+  // was previously only visible on the detail page, so the grid read as a
+  // flat retail price list. Surface the deepest break the buyer can reach.
+  const bestTier = variant?.priceTiers?.length
+    ? variant.priceTiers.reduce((best, t) => (t.unitPrice < best.unitPrice ? t : best))
+    : null;
+  const bulkTier = variant && bestTier && bestTier.unitPrice < getEffectivePrice(variant) ? bestTier : null;
+
   const handleAddToCart = (e: React.MouseEvent) => {
     e.preventDefault();
     if (!variant) return;
@@ -65,6 +73,13 @@ export function ProductCard({ product }: ProductCardProps) {
           <p className="text-sm text-text-secondary">
             {product.name}{variant?.size ? ` ${variant.size}` : ''}
           </p>
+          {(bulkTier || (variant && variant.moq > 1)) && (
+            <p className="text-xs text-text-muted leading-snug">
+              {bulkTier && <>{formatPrice(bulkTier.unitPrice)}/unit at {bulkTier.minQty}+</>}
+              {bulkTier && variant && variant.moq > 1 && ' · '}
+              {variant && variant.moq > 1 && <>MOQ {variant.moq}</>}
+            </p>
+          )}
           {/* Pinned to the bottom of the flex column (mt-auto) so the price/
               add-to-cart row lines up across cards in the same grid row even
               when neighboring cards' names wrap to a different number of

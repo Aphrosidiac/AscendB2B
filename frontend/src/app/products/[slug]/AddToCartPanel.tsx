@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ShoppingCart, Check } from 'lucide-react';
+import Link from 'next/link';
+import { ShoppingCart, Check, FileText } from 'lucide-react';
 import { useCart } from '@/lib/cart';
 import { Button } from '@/components/ui/Button';
 import { formatPrice, getEffectivePrice, getTieredPrice, getVariantDisplayName, isSaleActive } from '@/lib/utils';
@@ -180,6 +181,16 @@ export function AddToCartPanel({ variantId, code, name, size, price, imageUrl, s
             )}
           </Button>
         </div>
+
+        {/* Volume beyond the published tiers is negotiated, not self-serve —
+            this is the entry point into the quotation flow, which previously
+            had no link from anywhere a buyer actually shops. */}
+        <Link
+          href={`/account/quotations?variant=${encodeURIComponent(variantId)}`}
+          className="flex items-center justify-center gap-2 w-full rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-text-secondary hover:text-text-primary hover:border-border-hover transition-colors"
+        >
+          <FileText className="w-4 h-4" /> Request a quote for larger volume
+        </Link>
       </div>
 
       {/* Mobile-only sticky CTA — keeps Add to Cart reachable once the inline

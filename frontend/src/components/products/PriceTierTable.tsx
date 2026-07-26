@@ -15,36 +15,46 @@ export function PriceTierTable({ priceTiers, basePrice }: Props) {
 
   const sorted = [...priceTiers].sort((a, b) => a.minQty - b.minQty);
   const showBaseRow = sorted[0].minQty > 1;
+  const best = sorted[sorted.length - 1];
+  // The saving is the reason this table exists — state it outright rather
+  // than making the buyer diff two numbers in their head.
+  const savingPct = Math.round(((basePrice - best.unitPrice) / basePrice) * 100);
 
   return (
-    <div className="border border-border rounded-lg overflow-hidden">
+    <div className="border border-border rounded-xl overflow-hidden">
       <table className="w-full text-sm">
-        <thead className="bg-surface-elevated">
+        <thead className="bg-surface-elevated border-b border-border">
           <tr>
-            <th className="text-left px-3 py-2 font-semibold text-text-secondary">Quantity</th>
-            <th className="text-right px-3 py-2 font-semibold text-text-secondary">Unit Price</th>
+            <th className="text-left px-3 py-2.5 text-xs font-semibold uppercase tracking-wider text-text-muted">Quantity</th>
+            <th className="text-right px-3 py-2.5 text-xs font-semibold uppercase tracking-wider text-text-muted">Unit Price</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
           {showBaseRow && (
             <tr>
-              <td className="px-3 py-2 text-text-secondary">1 – {sorted[0].minQty - 1}</td>
-              <td className="px-3 py-2 text-right font-medium">{formatPrice(basePrice)}</td>
+              <td className="px-3 py-2.5 text-text-secondary">1 – {sorted[0].minQty - 1}</td>
+              <td className="px-3 py-2.5 text-right font-medium tabular-nums">{formatPrice(basePrice)}</td>
             </tr>
           )}
           {sorted.map((tier, i) => {
             const next = sorted[i + 1];
+            const isBest = !next;
             return (
-              <tr key={tier.id}>
-                <td className="px-3 py-2 text-text-secondary">
+              <tr key={tier.id} className={isBest ? 'bg-primary text-white' : undefined}>
+                <td className={`px-3 py-2.5 ${isBest ? 'font-medium' : 'text-text-secondary'}`}>
                   {tier.minQty}{next ? ` – ${next.minQty - 1}` : '+'}
                 </td>
-                <td className="px-3 py-2 text-right font-medium">{formatPrice(tier.unitPrice)}</td>
+                <td className="px-3 py-2.5 text-right font-semibold tabular-nums">{formatPrice(tier.unitPrice)}</td>
               </tr>
             );
           })}
         </tbody>
       </table>
+      {savingPct > 0 && (
+        <p className="px-3 py-2 text-xs text-text-secondary bg-surface-elevated border-t border-border">
+          Save {savingPct}% per unit at {best.minQty}+
+        </p>
+      )}
     </div>
   );
 }

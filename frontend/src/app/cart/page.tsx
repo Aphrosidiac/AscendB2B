@@ -50,7 +50,7 @@ export default function CartPage() {
                     <h3 className="font-display font-bold text-sm sm:text-base truncate">{item.code}</h3>
                     <p className="text-xs sm:text-sm text-text-secondary truncate">{item.name}</p>
                     <p className="text-sm text-text-secondary">{formatPrice(unitPrice)}/unit</p>
-                    {moq > 1 && <p className="text-xs text-warning">MOQ: {moq} units</p>}
+                    {moq > 1 && <p className="text-xs text-text-muted">MOQ: {moq} units</p>}
                   </div>
 
                   <button onClick={() => removeItem(item.variantId)} className="p-2 text-text-muted hover:text-danger transition-colors cursor-pointer shrink-0">

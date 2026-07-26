@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Image from 'next/image';
-import { Check, ShieldCheck, Truck } from 'lucide-react';
+import { Check, ShieldCheck, Truck, Package } from 'lucide-react';
 import { Animate } from '@/components/ui/Animate';
 import { formatPrice, getDefaultVariant, getEffectivePrice, getVariantDisplayName, isSaleActive } from '@/lib/utils';
 import { AddToCartPanel } from './AddToCartPanel';
@@ -121,9 +121,14 @@ export function VariantSwitcher({ product, benefits, shippingFee }: Props) {
               <span className="text-sm text-text-muted">per unit</span>
             </div>
 
+            {/* A trade purchase floor is neutral information, not a warning —
+                this used to borrow --color-warning, which both broke the
+                monochrome accent rule and collided with the genuine low-stock
+                warning further down this same column. */}
             {variant.moq > 1 && (
-              <p className="text-sm text-warning bg-warning/10 border border-warning/20 rounded-lg px-3 py-2">
-                Minimum order quantity: {variant.moq} units
+              <p className="flex items-center gap-2 text-sm text-text-secondary bg-surface-elevated border border-border rounded-lg px-3 py-2">
+                <Package className="w-4 h-4 shrink-0 text-text-muted" />
+                Minimum order quantity: <span className="font-medium text-text-primary">{variant.moq} units</span>
               </p>
             )}
 

@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useEffect, useRef, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, FileText, Plus, X, Trash2 } from 'lucide-react';
 import { useCompanyAuth } from '@/hooks/useCompanyAuth';
@@ -36,30 +36,57 @@ interface QuoteLine {
   quantity: number;
 }
 
+// useSearchParams (for the ?variant= deep link from product pages) requires a
+// Suspense boundary in the App Router, even in a fully client-rendered page.
 export default function QuotationsListPage() {
+  return (
+    <Suspense fallback={null}>
+      <QuotationsList />
+    </Suspense>
+  );
+}
+
+function QuotationsList() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { token, loading: authLoading, isAuthenticated } = useCompanyAuth();
   const [quotations, setQuotations] = useState<Quotation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [status, setStatus] = useState<FilterValue>('');
 
-  // Request-a-quote builder — no natural entry point exists yet on a
-  // product page or cart, so this is a self-contained picker right here
-  // (per the task brief: "otherwise add a simple form/button on the
-  // quotations list page"). Scoped to plain product variants only — there's
-  // no public kit-browsing endpoint yet (admin-only), so kits aren't
-  // selectable from this builder.
+  // Request-a-quote builder. Product pages link here with ?variant=<id> to
+  // open it prefilled with the SKU the buyer was looking at. Scoped to plain
+  // product variants only — there's no public kit-browsing endpoint yet
+  // (admin-only), so kits aren't selectable from this builder.
   const [formOpen, setFormOpen] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
   const [productsLoading, setProductsLoading] = useState(false);
   const [lines, setLines] = useState<QuoteLine[]>([]);
   const [formError, setFormError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const requestedVariantId = searchParams.get('variant');
 
   useEffect(() => {
-    if (!authLoading && !isAuthenticated) router.push('/login?redirect=/account/quotations');
-  }, [authLoading, isAuthenticated, router]);
+    if (!authLoading && !isAuthenticated) {
+      // Preserve the deep link across the login round-trip, so a logged-out
+      // buyer clicking "Request a Quote" on a product page still lands back
+      // in the builder with that SKU selected.
+      const target = requestedVariantId
+        ? `/account/quotations?variant=${encodeURIComponent(requestedVariantId)}`
+        : '/account/quotations';
+      router.push(`/login?redirect=${encodeURIComponent(target)}`);
+    }
+  }, [authLoading, isAuthenticated, router, requestedVariantId]);
+
+  // One-shot: opening the builder is a user-visible side effect, so it must
+  // not re-fire on later renders while the param is still in the URL.
+  const deepLinkHandled = useRef(false);
+  useEffect(() => {
+    if (deepLinkHandled.current || !requestedVariantId || !isAuthenticated) return;
+    deepLinkHandled.current = true;
+    openForm(requestedVariantId);
+  }, [requestedVariantId, isAuthenticated]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!token) return;
@@ -71,22 +98,37 @@ export default function QuotationsListPage() {
       .finally(() => setLoading(false));
   }, [token, status]);
 
-  const openForm = () => {
+  const openForm = (preselectVariantId?: string) => {
     setFormError('');
     setFormOpen(true);
+
+    const seedLines = (list: Product[]) => {
+      if (preselectVariantId) {
+        const product = list.find((p) => p.variants.some((v) => v.id === preselectVariantId && v.active));
+        const variant = product?.variants.find((v) => v.id === preselectVariantId);
+        if (product && variant) {
+          setLines([{ id: nextLineId(), productId: product.id, variantId: variant.id, quantity: variant.moq || 1 }]);
+          return;
+        }
+      }
+      if (list.length > 0) {
+        const firstVariant = list[0].variants.find((v) => v.active)!;
+        setLines([{ id: nextLineId(), productId: list[0].id, variantId: firstVariant.id, quantity: firstVariant.moq || 1 }]);
+      }
+    };
+
     if (products.length === 0) {
       setProductsLoading(true);
       getProducts({ limit: 100 })
         .then((res) => {
           const withVariants = res.data.filter((p) => p.variants.some((v) => v.active));
           setProducts(withVariants);
-          if (withVariants.length > 0) {
-            const firstVariant = withVariants[0].variants.find((v) => v.active)!;
-            setLines([{ id: nextLineId(), productId: withVariants[0].id, variantId: firstVariant.id, quantity: firstVariant.moq || 1 }]);
-          }
+          seedLines(withVariants);
         })
         .catch(() => setFormError('Failed to load products'))
         .finally(() => setProductsLoading(false));
+    } else if (preselectVariantId) {
+      seedLines(products);
     }
   };
 
@@ -149,7 +191,7 @@ export default function QuotationsListPage() {
         <div className="flex items-center justify-between mb-6">
           <h1 className="font-display text-3xl font-bold">Quotations</h1>
           {!formOpen && (
-            <Button size="sm" onClick={openForm}>
+            <Button size="sm" onClick={() => openForm()}>
               <Plus className="w-4 h-4" /> Request a Quote
             </Button>
           )}

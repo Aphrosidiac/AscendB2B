@@ -26,11 +26,14 @@ export function Navbar() {
   const [searchQuery, setSearchQuery] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // "My Orders" only resolves to something for a signed-in company — for a
+  // logged-out visitor it just bounces to /login, so it's dropped in favour
+  // of keeping room for the trade-account CTA without wrapping the nav.
   const links = [
     { href: '/products', label: 'Products' },
     { href: '/insights', label: 'Insights' },
     { href: '/calculator', label: 'Calculator' },
-    { href: '/account/orders', label: 'My Orders' },
+    ...(isAuthenticated ? [{ href: '/account/orders', label: 'My Orders' }] : []),
     { href: '/about', label: 'About' },
     { href: isAuthenticated ? '/account' : '/login', label: isAuthenticated ? 'Account' : 'Sign In' },
   ];
@@ -135,6 +138,18 @@ export function Navbar() {
           </div>
 
           <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+            {/* The signup page is already written for trade buyers ("see bulk
+                pricing... on trade terms") but nothing linked to it — a
+                logged-out visitor only ever saw a generic "Sign In". */}
+            {!searchOpen && !isAuthenticated && (
+              <Link
+                href="/signup"
+                className="hidden lg:inline-flex items-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-light transition-colors"
+              >
+                Trade Account
+              </Link>
+            )}
+
             {!searchOpen && (
               <button
                 onClick={() => { setSearchOpen(true); setMenuOpen(false); }}
@@ -237,7 +252,16 @@ export function Navbar() {
                 transform: menuVisible ? 'translateY(0)' : 'translateY(16px)',
               }}
             >
-              <p className="text-white/50 text-sm">Premium Research Peptides · Malaysia</p>
+              {!isAuthenticated && (
+                <Link
+                  href="/signup"
+                  onClick={() => setMenuOpen(false)}
+                  className="mb-5 flex items-center justify-center rounded-lg bg-white px-5 py-3 font-display font-bold text-primary hover:bg-white/90 transition-colors"
+                >
+                  Apply for a Trade Account
+                </Link>
+              )}
+              <p className="text-white/50 text-sm">Wholesale Research Peptides · Malaysia</p>
             </div>
           </div>
         </div>

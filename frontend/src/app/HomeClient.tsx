@@ -3,7 +3,7 @@
 import { useCallback } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { ArrowRight, Shield, Truck, FlaskConical } from 'lucide-react';
+import { ArrowRight, FileText, Layers, FlaskConical, CreditCard } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { ProductCard } from '@/components/products/ProductCard';
 import { Animate, Stagger } from '@/components/ui/Animate';
@@ -14,20 +14,17 @@ import type { HardsellAccent } from '@/components/home/HardsellSlide';
 import { getCategoryIcon } from '@/lib/category-icons';
 import type { Product, Category, Insight } from '@/types';
 
-const GREEN_ACCENT: HardsellAccent = {
-  solid: '#15803d',
-  bright: '#22c55e',
-  glow: 'rgba(21,128,61,0.2)',
-  shadow: 'rgba(21,128,61,0.45)',
-  shadowHover: 'rgba(21,128,61,0.6)',
-};
-
-const BLUE_ACCENT: HardsellAccent = {
-  solid: '#1e40af',
-  bright: '#3b82f6',
-  glow: 'rgba(30,64,175,0.2)',
-  shadow: 'rgba(30,64,175,0.45)',
-  shadowHover: 'rgba(30,64,175,0.6)',
+// Both hardsell slides share one accent — the green/blue split this used to
+// have was the only place on the site that broke the monochrome-accent rule.
+// `solid` needs to read as a distinct raised chip against the section's own
+// `bg-primary` (#0A0A0A) while still passing contrast for the white text/icon
+// classes hardcoded onto it in HardsellSlide.tsx.
+const MONO_ACCENT: HardsellAccent = {
+  solid: '#404040',
+  bright: '#FFFFFF',
+  glow: 'rgba(255,255,255,0.05)',
+  shadow: 'rgba(0,0,0,0.45)',
+  shadowHover: 'rgba(0,0,0,0.6)',
 };
 
 interface HomeClientProps {
@@ -78,12 +75,12 @@ export function HomeClient({
               </Animate>
               <Animate variant="fadeUp" delay={0.15} duration={0.7}>
                 <h1 className="font-display text-4xl md:text-5xl lg:text-6xl font-bold leading-tight mb-6">
-                  Premium Research Peptides in Malaysia
+                  Trade Pricing on Lab-Grade Peptides
                 </h1>
               </Animate>
               <Animate variant="fadeUp" delay={0.3} duration={0.7}>
                 <p className="text-lg text-neutral-300 mb-8 max-w-lg">
-                  Lab-grade peptides for anti-aging, fat loss, muscle growth, and immune support. Fast shipping across Peninsular Malaysia.
+                  Bulk pricing, credit terms, and dedicated account support for clinics, pharmacies, and research labs across Malaysia.
                 </p>
               </Animate>
               <Animate variant="fadeUp" delay={0.45} duration={0.7} className="hidden md:block">
@@ -92,6 +89,12 @@ export function HomeClient({
                     <Button variant="secondary" size="lg">
                       Browse Products <ArrowRight className="w-4 h-4" />
                     </Button>
+                  </Link>
+                  <Link
+                    href="/account/quotations"
+                    className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/20 px-6 py-3 text-base font-medium text-white hover:bg-white/10 transition-colors"
+                  >
+                    Request a Quote
                   </Link>
                 </div>
               </Animate>
@@ -107,11 +110,18 @@ export function HomeClient({
                 onMouseEnter={triggerJiggle}
                 onTouchStart={triggerJiggle}
               />
-              <Link href="/products">
-                <Button variant="secondary" size="lg">
-                  Browse Products <ArrowRight className="w-4 h-4" />
-                </Button>
-              </Link>
+              <div className="flex flex-wrap justify-center gap-4">
+                <Link href="/products">
+                  <Button variant="secondary" size="lg">
+                    Browse Products <ArrowRight className="w-4 h-4" />
+                  </Button>
+                </Link>
+                <Link href="/account/quotations">
+                  <Button variant="outline" size="lg" className="border-white/20 text-white hover:bg-white/10">
+                    Request a Quote
+                  </Button>
+                </Link>
+              </div>
             </Animate>
             <Animate variant="fadeRight" delay={0.3} duration={0.8} className="hidden md:block flex-shrink-0">
               <Image
@@ -132,32 +142,41 @@ export function HomeClient({
       {/* Trust Signals */}
       <section className="border-b border-border">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-          <Stagger className="grid grid-cols-1 md:grid-cols-3 gap-8" stagger={0.12}>
+          <Stagger className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8" stagger={0.12}>
             <div className="flex items-start gap-4">
               <div className="p-3 bg-surface-elevated rounded-lg">
                 <FlaskConical className="w-6 h-6 text-text-primary" />
               </div>
               <div>
                 <h3 className="font-display font-semibold mb-1">Lab-Grade Quality</h3>
-                <p className="text-sm text-text-secondary">Rigorously tested peptides with verified purity and potency.</p>
+                <p className="text-sm text-text-secondary">Third-party tested for identity, purity, and potency.</p>
               </div>
             </div>
             <div className="flex items-start gap-4">
               <div className="p-3 bg-surface-elevated rounded-lg">
-                <Truck className="w-6 h-6 text-text-primary" />
+                <Layers className="w-6 h-6 text-text-primary" />
               </div>
               <div>
-                <h3 className="font-display font-semibold mb-1">Fast Shipping</h3>
-                <p className="text-sm text-text-secondary">Delivery across Peninsular Malaysia with tracking.</p>
+                <h3 className="font-display font-semibold mb-1">Bulk Pricing</h3>
+                <p className="text-sm text-text-secondary">Unit price drops automatically as order quantity rises.</p>
               </div>
             </div>
             <div className="flex items-start gap-4">
               <div className="p-3 bg-surface-elevated rounded-lg">
-                <Shield className="w-6 h-6 text-text-primary" />
+                <CreditCard className="w-6 h-6 text-text-primary" />
               </div>
               <div>
-                <h3 className="font-display font-semibold mb-1">Secure &amp; Discreet</h3>
-                <p className="text-sm text-text-secondary">All orders are discreetly packaged for your privacy.</p>
+                <h3 className="font-display font-semibold mb-1">Credit Terms</h3>
+                <p className="text-sm text-text-secondary">Order on Net 15, 30, or 60 terms and settle by invoice.</p>
+              </div>
+            </div>
+            <div className="flex items-start gap-4">
+              <div className="p-3 bg-surface-elevated rounded-lg">
+                <FileText className="w-6 h-6 text-text-primary" />
+              </div>
+              <div>
+                <h3 className="font-display font-semibold mb-1">Quotes on Request</h3>
+                <p className="text-sm text-text-secondary">Negotiated pricing on volume orders, quoted before you commit.</p>
               </div>
             </div>
           </Stagger>
@@ -171,7 +190,7 @@ export function HomeClient({
             researchArticle: hardsellResearchArticle,
             headline: hardsellHeadline,
             subheadline: hardsellSubheadline,
-            accent: GREEN_ACCENT,
+            accent: MONO_ACCENT,
           },
           hardsellSlide2Product && {
             product: hardsellSlide2Product,
@@ -180,7 +199,7 @@ export function HomeClient({
             researchArticle: null,
             headline: hardsellSlide2Headline,
             subheadline: hardsellSlide2Subheadline,
-            accent: BLUE_ACCENT,
+            accent: MONO_ACCENT,
           },
         ].filter((s): s is NonNullable<typeof s> => Boolean(s));
 
@@ -244,31 +263,40 @@ export function HomeClient({
       <section className="border-t border-border bg-surface/40">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
           <Animate variant="fadeUp">
-            <h2 className="font-display text-2xl md:text-3xl font-bold mb-6">Buy Research Peptides in Malaysia</h2>
+            <h2 className="font-display text-2xl md:text-3xl font-bold mb-6">Wholesale Research Peptides in Malaysia</h2>
             <div className="space-y-4 text-text-secondary leading-relaxed">
               <p>
-                ASCEND is Malaysia&apos;s trusted source for premium research peptides. We supply lab-grade
+                ASCEND supplies clinics, pharmacies, and research laboratories across Malaysia with lab-grade
                 compounds including{' '}
                 <Link href="/products" className="text-primary-light hover:underline">Retatrutide, GHK-Cu, BPC-157, Tesamorelin, MOTS-c and AOD9604</Link>,
                 all manufactured to 99%+ purity with third-party Certificates of Analysis available on request.
               </p>
               <p>
-                {freeShipping ? (
-                  <>Every order ships free across Peninsular Malaysia — from the Klang Valley to every other state — in discreet,
-                  temperature-conscious packaging.</>
-                ) : (
-                  <>Every order is delivered across Peninsular Malaysia — from the Klang Valley to every other state — in discreet,
-                  temperature-conscious packaging.</>
-                )}{' '}
-                Prices are listed in Malaysian Ringgit (MYR) with no hidden fees,
-                and you can pay by bank transfer, FPX or card. Sign in to your business account anytime to{' '}
-                <Link href="/account/orders" className="text-primary-light hover:underline">track your order</Link>.
+                Every product carries quantity-break pricing, so your unit cost falls as volume rises. Approved
+                business accounts order on Net 15, 30, or 60 credit terms and settle by invoice rather than paying
+                at checkout. For volume beyond our published tiers,{' '}
+                <Link href="/account/quotations" className="text-primary-light hover:underline">request a quote</Link>{' '}
+                and we will price it directly.
               </p>
               <p>
-                New to peptides? Read our{' '}
-                <Link href="/guide" className="text-primary-light hover:underline">peptide reconstitution and storage guide</Link>, or browse the{' '}
-                <Link href="/faq" className="text-primary-light hover:underline">frequently asked questions</Link>{' '}
-                covering purity, shipping and how to order research peptides in Malaysia.
+                {freeShipping ? (
+                  <>Orders ship free across Peninsular Malaysia — from the Klang Valley to every other state — in
+                  temperature-conscious packaging.</>
+                ) : (
+                  <>Orders are delivered across Peninsular Malaysia — from the Klang Valley to every other state — in
+                  temperature-conscious packaging.</>
+                )}{' '}
+                Prices are listed in Malaysian Ringgit (MYR) with no hidden fees. Sign in to your business account to{' '}
+                <Link href="/account/orders" className="text-primary-light hover:underline">track orders</Link> and{' '}
+                <Link href="/account/invoices" className="text-primary-light hover:underline">review outstanding invoices</Link>.
+              </p>
+              <p>
+                Not yet set up with us?{' '}
+                <Link href="/signup" className="text-primary-light hover:underline">Apply for a trade account</Link>{' '}
+                to see bulk pricing, or read our{' '}
+                <Link href="/guide" className="text-primary-light hover:underline">peptide reconstitution and storage guide</Link>{' '}
+                and{' '}
+                <Link href="/faq" className="text-primary-light hover:underline">frequently asked questions</Link>.
               </p>
               <p className="text-xs text-text-muted pt-2">
                 All products are sold strictly for laboratory and research purposes only.
