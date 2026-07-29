@@ -8,6 +8,7 @@ import { getTieredUnitPrice } from '../../utils/product-pricing.js';
 import { getVariantDisplayName } from '../../utils/product-addons.js';
 import { enqueueEmail } from '../../utils/email-outbox.js';
 import { getPaginationParams, paginatedResponse } from '../../utils/pagination.js';
+import { BATCH_SELLABLE_STATUSES, PUBLIC_KIT_WHERE } from '../../utils/kit-availability.js';
 
 const orderItemInputSchema = z.object({
   variantId: z.string().optional(),
@@ -40,8 +41,6 @@ function isFieldConflict(err: unknown, field: string): boolean {
   const fields = meta?.target ?? meta?.driverAdapterError?.cause?.constraint?.fields;
   return Array.isArray(fields) ? fields.includes(field) : typeof fields === 'string' && fields.includes(field);
 }
-
-const BATCH_SELLABLE_STATUSES = ['IN_STOCK', 'INCOMING'] as const;
 
 export async function createOrder(fastify: FastifyInstance, companyId: string, body: unknown) {
   const data = createOrderSchema.parse(body);
@@ -114,7 +113,10 @@ export async function createOrder(fastify: FastifyInstance, companyId: string, b
             })
           : Promise.resolve([]),
         kitIds.length
-          ? tx.kit.findMany({ where: { id: { in: kitIds }, active: true }, include: { items: true } })
+          // PUBLIC_KIT_WHERE, not just `active` — a kit belonging to a campaign
+          // that has since closed must stop being orderable even for someone
+          // holding its id from when the campaign was open.
+          ? tx.kit.findMany({ where: { id: { in: kitIds }, ...PUBLIC_KIT_WHERE }, include: { items: true } })
           : Promise.resolve([]),
       ]);
 
@@ -126,7 +128,7 @@ export async function createOrder(fastify: FastifyInstance, companyId: string, b
           throw { statusCode: 400, message: `Product variant ${item.variantId} not found or inactive` };
         }
         if (item.kitId && !kitMap.has(item.kitId)) {
-          throw { statusCode: 400, message: `Kit ${item.kitId} not found or inactive` };
+          throw { statusCode: 400, message: `Kit ${item.kitId} is no longer available (inactive, or its pre-order campaign has closed)` };
         }
       }
 

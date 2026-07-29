@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { Trash2, ShoppingCart } from 'lucide-react';
-import { useCart } from '@/lib/cart';
+import { useCart, cartLineKey } from '@/lib/cart';
 import { formatPrice, getTieredPrice } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
 import { Animate, Stagger } from '@/components/ui/Animate';
@@ -35,8 +35,9 @@ export default function CartPage() {
             const moq = item.moq && item.moq > 1 ? item.moq : 1;
             const unitPrice = getTieredPrice(item.priceTiers, item.quantity, item.price);
             const atMoq = item.quantity <= moq;
+            const lineKey = cartLineKey(item);
             return (
-              <div key={item.variantId} className="bg-surface rounded-xl border border-border p-4">
+              <div key={lineKey} className="bg-surface rounded-xl border border-border p-4">
                 <div className="flex items-center gap-3">
                   <div className="w-14 h-14 sm:w-16 sm:h-16 bg-surface-elevated rounded-lg flex items-center justify-center shrink-0 overflow-hidden">
                     {item.imageUrl ? (
@@ -47,21 +48,49 @@ export default function CartPage() {
                   </div>
 
                   <div className="flex-1 min-w-0">
-                    <h3 className="font-display font-bold text-sm sm:text-base truncate">{item.code}</h3>
-                    <p className="text-xs sm:text-sm text-text-secondary truncate">{item.name}</p>
-                    <p className="text-sm text-text-secondary">{formatPrice(unitPrice)}/unit</p>
+                    <h3 className="font-display font-bold text-sm sm:text-base truncate">
+                      {item.kitId ? item.name : item.code}
+                    </h3>
+                    {item.kitId ? (
+                      <p className="text-xs sm:text-sm text-text-secondary">
+                        Kit &middot; {item.kitContents?.length ?? 0} products
+                      </p>
+                    ) : (
+                      <p className="text-xs sm:text-sm text-text-secondary truncate">{item.name}</p>
+                    )}
+                    <p className="text-sm text-text-secondary">
+                      {formatPrice(unitPrice)}/{item.kitId ? 'kit' : 'unit'}
+                    </p>
                     {moq > 1 && <p className="text-xs text-text-muted">MOQ: {moq} units</p>}
                   </div>
 
-                  <button onClick={() => removeItem(item.variantId)} className="p-2 text-text-muted hover:text-danger transition-colors cursor-pointer shrink-0">
+                  <button onClick={() => removeItem(lineKey)} className="p-2 text-text-muted hover:text-danger transition-colors cursor-pointer shrink-0">
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
 
+                {/* A kit is opaque otherwise — the buyer is committing to a
+                    bundle and should see its contents without leaving the cart. */}
+                {item.kitId && item.kitContents && item.kitContents.length > 0 && (
+                  <ul className="mt-3 pt-3 border-t border-border space-y-1">
+                    {item.kitContents.map((content, idx) => (
+                      <li key={idx} className="flex justify-between text-xs text-text-secondary">
+                        <span className="truncate pr-2">
+                          {content.name}
+                          {content.size ? ` ${content.size}` : ''}
+                        </span>
+                        <span className="shrink-0 text-text-muted">
+                          &times;{content.quantity * item.quantity}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+
                 <div className="flex items-center justify-between mt-3 pt-3 border-t border-border">
                   <div className="flex items-center border border-border rounded-lg">
                     <button
-                      onClick={() => updateQuantity(item.variantId, Math.max(moq, item.quantity - 1))}
+                      onClick={() => updateQuantity(lineKey, Math.max(moq, item.quantity - 1))}
                       disabled={atMoq}
                       className="px-3 py-1.5 text-text-secondary hover:text-text-primary cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                     >
@@ -69,7 +98,7 @@ export default function CartPage() {
                     </button>
                     <span className="px-4 py-1.5 text-sm font-medium">{item.quantity}</span>
                     <button
-                      onClick={() => updateQuantity(item.variantId, item.quantity + 1)}
+                      onClick={() => updateQuantity(lineKey, item.quantity + 1)}
                       className="px-3 py-1.5 text-text-secondary hover:text-text-primary cursor-pointer"
                     >
                       +

@@ -98,8 +98,15 @@ export interface AddOnVariant {
   addOnQuantity: number;
 }
 
+// A cart line is either a product variant or a kit, never both — the same
+// XOR convention the backend enforces on OrderItem/QuotationItem. Use
+// cartLineKey() (lib/cart.tsx) to identify a line rather than reaching for
+// variantId, which is absent on kit lines.
 export interface CartItem {
-  variantId: string;
+  variantId?: string;
+  // Set instead of variantId when this line is a kit. Kits are priced flat at
+  // pricePerKit with no quantity breaks, so `priceTiers` is never set here.
+  kitId?: string;
   code: string;
   name: string;
   size: string | null;
@@ -119,6 +126,9 @@ export interface CartItem {
   // charged price at order creation regardless of what's stored here.
   priceTiers?: PriceTier[];
   imageUrl: string | null;
+  // Kit lines only: what the kit contains, so the cart can show what a buyer
+  // is actually committing to without refetching. Display-only.
+  kitContents?: { name: string; size: string | null; quantity: number }[];
 }
 
 export interface OrderItem {
@@ -617,6 +627,77 @@ export interface Kit {
   updatedAt: string;
   items: KitItem[];
   campaign?: { id: string; name: string; status: CampaignStatus } | null;
+}
+
+// ---------------------------------------------------------------------------
+// Public storefront — kits & pre-order campaigns.
+// backend/src/modules/kits + modules/campaigns. Distinct from the admin `Kit`
+// above: component variants carry slug/imageUrl for linking and thumbnails but
+// no per-component price (a kit is sold at pricePerKit, not as a priced parts
+// list), and each kit carries a computed `available`.
+// ---------------------------------------------------------------------------
+
+export interface PublicKitItem {
+  id: string;
+  kitId: string;
+  variantId: string;
+  quantity: number;
+  variant: {
+    id: string;
+    code: string;
+    size: string | null;
+    imageUrl: string | null;
+    product: { name: string; slug: string };
+  };
+}
+
+export interface PublicKit {
+  id: string;
+  campaignId: string | null;
+  name: string;
+  pricePerKit: number;
+  qtyPerKit: number;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+  items: PublicKitItem[];
+  campaign: {
+    id: string;
+    name: string;
+    status: CampaignStatus;
+    closesAt: string;
+    estimatedArrival: string;
+  } | null;
+  // Whole kits assemblable from current component stock — gated by the
+  // scarcest component, and the same number checkout enforces.
+  available: number;
+}
+
+export interface PublicCampaignBatch {
+  id: string;
+  quantity: number;
+  status: BatchStatus;
+  expiry: string;
+  coaUrl: string | null;
+  variant: {
+    id: string;
+    code: string;
+    size: string | null;
+    product: { name: string; slug: string };
+  };
+}
+
+export interface PublicCampaign {
+  id: string;
+  name: string;
+  opensAt: string;
+  closesAt: string;
+  estimatedArrival: string;
+  status: CampaignStatus;
+  createdAt: string;
+  updatedAt: string;
+  kits: PublicKit[];
+  batches: PublicCampaignBatch[];
 }
 
 // ---------------------------------------------------------------------------

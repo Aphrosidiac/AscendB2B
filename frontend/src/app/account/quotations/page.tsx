@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, FileText, Plus, X, Trash2 } from 'lucide-react';
 import { useCompanyAuth } from '@/hooks/useCompanyAuth';
-import { listCompanyQuotations, requestQuotation, getProducts } from '@/lib/api';
+import { listCompanyQuotations, requestQuotation, getProducts, getKits } from '@/lib/api';
 import { formatPrice, formatDate, cn } from '@/lib/utils';
 import { QUOTATION_STATUS_LABELS, QUOTATION_STATUS_COLORS, QUOTATION_FILTER_OPTIONS } from '@/lib/constants';
 import { Badge } from '@/components/ui/Badge';
@@ -16,7 +16,7 @@ import { Animate, Stagger } from '@/components/ui/Animate';
 import { StatusFilterPills } from '@/components/orders/StatusFilterPills';
 import { FadeSwap } from '@/components/orders/FadeSwap';
 import { getQuoteValidity, ValidityChip } from '@/components/quotations/QuotationProgress';
-import type { Quotation, QuotationStatus, Product } from '@/types';
+import type { Quotation, QuotationStatus, Product, PublicKit } from '@/types';
 
 type FilterValue = QuotationStatus | '';
 
@@ -29,12 +29,21 @@ function apiErrorMessage(err: unknown): string | undefined {
 let lineIdCounter = 0;
 const nextLineId = () => `line-${++lineIdCounter}`;
 
+// A line quotes either a product variant or a kit, never both — mirrors the
+// XOR the backend enforces on QuotationItem. `kitId` set means productId and
+// variantId are both empty, and the size selector is inapplicable.
 interface QuoteLine {
   id: string;
   productId: string;
   variantId: string;
+  kitId: string;
   quantity: number;
 }
+
+// The single Product select lists kits alongside products, so its option
+// values share one namespace — kits are prefixed to keep them apart from
+// product ids.
+const KIT_OPTION_PREFIX = 'kit:';
 
 // useSearchParams (for the ?variant= deep link from product pages) requires a
 // Suspense boundary in the App Router, even in a fully client-rendered page.
@@ -56,11 +65,12 @@ function QuotationsList() {
   const [status, setStatus] = useState<FilterValue>('');
 
   // Request-a-quote builder. Product pages link here with ?variant=<id> to
-  // open it prefilled with the SKU the buyer was looking at. Scoped to plain
-  // product variants only — there's no public kit-browsing endpoint yet
-  // (admin-only), so kits aren't selectable from this builder.
+  // open it prefilled with the SKU the buyer was looking at. Kits are
+  // selectable too — they're listed in the same Product select under a
+  // KIT_OPTION_PREFIX value, and a kit line has no size to choose.
   const [formOpen, setFormOpen] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
+  const [kits, setKits] = useState<PublicKit[]>([]);
   const [productsLoading, setProductsLoading] = useState(false);
   const [lines, setLines] = useState<QuoteLine[]>([]);
   const [formError, setFormError] = useState('');
@@ -107,22 +117,29 @@ function QuotationsList() {
         const product = list.find((p) => p.variants.some((v) => v.id === preselectVariantId && v.active));
         const variant = product?.variants.find((v) => v.id === preselectVariantId);
         if (product && variant) {
-          setLines([{ id: nextLineId(), productId: product.id, variantId: variant.id, quantity: variant.moq || 1 }]);
+          setLines([{ id: nextLineId(), productId: product.id, variantId: variant.id, kitId: '', quantity: variant.moq || 1 }]);
           return;
         }
       }
       if (list.length > 0) {
         const firstVariant = list[0].variants.find((v) => v.active)!;
-        setLines([{ id: nextLineId(), productId: list[0].id, variantId: firstVariant.id, quantity: firstVariant.moq || 1 }]);
+        setLines([{ id: nextLineId(), productId: list[0].id, variantId: firstVariant.id, kitId: '', quantity: firstVariant.moq || 1 }]);
       }
     };
 
     if (products.length === 0) {
       setProductsLoading(true);
-      getProducts({ limit: 100 })
-        .then((res) => {
-          const withVariants = res.data.filter((p) => p.variants.some((v) => v.active));
+      // Kits are a nice-to-have in this builder — a failure to load them must
+      // not block quoting plain products, so their result is handled
+      // independently of the products fetch that actually gates the form.
+      Promise.all([
+        getProducts({ limit: 100 }),
+        getKits({ limit: 100 }).catch(() => null),
+      ])
+        .then(([productRes, kitRes]) => {
+          const withVariants = productRes.data.filter((p) => p.variants.some((v) => v.active));
           setProducts(withVariants);
+          if (kitRes) setKits(kitRes.data);
           seedLines(withVariants);
         })
         .catch(() => setFormError('Failed to load products'))
@@ -141,7 +158,7 @@ function QuotationsList() {
   const addLine = () => {
     if (products.length === 0) return;
     const firstVariant = products[0].variants.find((v) => v.active)!;
-    setLines((prev) => [...prev, { id: nextLineId(), productId: products[0].id, variantId: firstVariant.id, quantity: firstVariant.moq || 1 }]);
+    setLines((prev) => [...prev, { id: nextLineId(), productId: products[0].id, variantId: firstVariant.id, kitId: '', quantity: firstVariant.moq || 1 }]);
   };
 
   const removeLine = (id: string) => setLines((prev) => prev.filter((l) => l.id !== id));
@@ -150,16 +167,27 @@ function QuotationsList() {
     setLines((prev) => prev.map((l) => (l.id === id ? { ...l, ...patch } : l)));
   };
 
-  const handleProductChange = (lineId: string, productId: string) => {
-    const product = products.find((p) => p.id === productId);
+  const handleProductChange = (lineId: string, value: string) => {
+    if (value.startsWith(KIT_OPTION_PREFIX)) {
+      // Switching to a kit clears the product/variant side of the line
+      // entirely — sending both ids is rejected server-side.
+      updateLine(lineId, {
+        kitId: value.slice(KIT_OPTION_PREFIX.length),
+        productId: '',
+        variantId: '',
+        quantity: 1,
+      });
+      return;
+    }
+    const product = products.find((p) => p.id === value);
     const firstVariant = product?.variants.find((v) => v.active);
-    updateLine(lineId, { productId, variantId: firstVariant?.id ?? '', quantity: firstVariant?.moq || 1 });
+    updateLine(lineId, { productId: value, variantId: firstVariant?.id ?? '', kitId: '', quantity: firstVariant?.moq || 1 });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!token) return;
-    const validLines = lines.filter((l) => l.variantId && l.quantity > 0);
+    const validLines = lines.filter((l) => (l.variantId || l.kitId) && l.quantity > 0);
     if (validLines.length === 0) {
       setFormError('Add at least one product line.');
       return;
@@ -168,7 +196,9 @@ function QuotationsList() {
     setFormError('');
     try {
       const created = await requestQuotation(token, {
-        items: validLines.map((l) => ({ variantId: l.variantId, quantity: l.quantity })),
+        items: validLines.map((l) =>
+          l.kitId ? { kitId: l.kitId, quantity: l.quantity } : { variantId: l.variantId, quantity: l.quantity }
+        ),
       });
       setQuotations((prev) => [created, ...prev]);
       closeForm();
@@ -215,26 +245,48 @@ function QuotationsList() {
             ) : (
               <div className="space-y-3">
                 {lines.map((line) => {
+                  const kit = line.kitId ? kits.find((k) => k.id === line.kitId) : undefined;
                   const product = products.find((p) => p.id === line.productId);
                   const variantOptions = (product?.variants ?? [])
                     .filter((v) => v.active)
                     .map((v) => ({ value: v.id, label: v.size ? `${v.size} — ${formatPrice(v.price)}` : formatPrice(v.price) }));
+                  const lineOptions = [
+                    ...products.map((p) => ({ value: p.id, label: p.name })),
+                    ...kits.map((k) => ({
+                      value: `${KIT_OPTION_PREFIX}${k.id}`,
+                      label: `Kit — ${k.name}`,
+                    })),
+                  ];
                   return (
                     <div key={line.id} className="grid sm:grid-cols-[1fr_1fr_auto_auto] gap-2 items-end">
                       <Select
                         label="Product"
                         id={`product-${line.id}`}
-                        value={line.productId}
+                        value={line.kitId ? `${KIT_OPTION_PREFIX}${line.kitId}` : line.productId}
                         onChange={(e) => handleProductChange(line.id, e.target.value)}
-                        options={products.map((p) => ({ value: p.id, label: p.name }))}
+                        options={lineOptions}
                       />
-                      <Select
-                        label="Size"
-                        id={`variant-${line.id}`}
-                        value={line.variantId}
-                        onChange={(e) => updateLine(line.id, { variantId: e.target.value })}
-                        options={variantOptions}
-                      />
+                      {/* A kit has one fixed composition — there's no size to
+                          pick, so show what it costs per kit instead of an
+                          empty, disabled-looking dropdown. */}
+                      {line.kitId ? (
+                        <div>
+                          <span className="block text-sm font-medium text-text-secondary mb-1.5">
+                            Kit price
+                          </span>
+                          <p className="h-[42px] flex items-center px-3 rounded-lg border border-border bg-surface-elevated text-sm text-text-secondary">
+                            {kit ? `${formatPrice(kit.pricePerKit)} per kit` : '—'}
+                          </p>
+                        </div>
+                      ) : (
+                        <Select
+                          label="Size"
+                          id={`variant-${line.id}`}
+                          value={line.variantId}
+                          onChange={(e) => updateLine(line.id, { variantId: e.target.value })}
+                          options={variantOptions}
+                        />
+                      )}
                       <Input
                         label="Qty"
                         id={`qty-${line.id}`}

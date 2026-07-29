@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { getPaginationParams, paginatedResponse } from '../../utils/pagination.js';
+import { notifyRevalidate } from '../../utils/revalidate.js';
 
 const batchObjectSchema = z.object({
   variantId: z.string().min(1),
@@ -60,7 +61,7 @@ export async function adminCreateBatch(fastify: FastifyInstance, body: unknown) 
     if (!campaign) throw { statusCode: 400, message: 'Campaign not found' };
   }
 
-  return fastify.prisma.batch.create({
+  const created = await fastify.prisma.batch.create({
     data: {
       variantId: data.variantId,
       campaignId: data.campaignId,
@@ -72,6 +73,11 @@ export async function adminCreateBatch(fastify: FastifyInstance, body: unknown) 
     },
     include: BATCH_INCLUDE,
   });
+
+  // Batch quantity/status feeds the kit availability numbers the storefront
+  // renders — see getKitAvailability.
+  notifyRevalidate(['kits']);
+  return created;
 }
 
 export async function adminUpdateBatch(fastify: FastifyInstance, id: string, body: unknown) {
@@ -88,7 +94,7 @@ export async function adminUpdateBatch(fastify: FastifyInstance, id: string, bod
     if (!campaign) throw { statusCode: 400, message: 'Campaign not found' };
   }
 
-  return fastify.prisma.batch.update({
+  const updated = await fastify.prisma.batch.update({
     where: { id },
     data: {
       variantId: data.variantId,
@@ -101,6 +107,9 @@ export async function adminUpdateBatch(fastify: FastifyInstance, id: string, bod
     },
     include: BATCH_INCLUDE,
   });
+
+  notifyRevalidate(['kits']);
+  return updated;
 }
 
 export async function adminDeleteBatch(fastify: FastifyInstance, id: string) {
@@ -112,6 +121,7 @@ export async function adminDeleteBatch(fastify: FastifyInstance, id: string) {
   // duck-typed P2003 convention as company-addresses.controller.ts.
   try {
     await fastify.prisma.batch.delete({ where: { id } });
+    notifyRevalidate(['kits']);
   } catch (err) {
     if ((err as { code?: string })?.code === 'P2003') {
       throw { statusCode: 400, message: 'This batch has already been used in a shipment and cannot be deleted' };

@@ -1,4 +1,4 @@
-import type { Category, PaginatedResponse, Product, Insight } from '@/types';
+import type { Category, PaginatedResponse, Product, Insight, PublicKit, PublicCampaign } from '@/types';
 
 // Server-side data fetching for SSR/metadata. The browser talks to the API via the
 // nginx-proxied relative /api path, so NEXT_PUBLIC_API_URL is empty in prod — server
@@ -57,3 +57,34 @@ export const getInsightsServer = (params?: { category?: string; limit?: number }
 
 export const getInsightServer = (slug: string) =>
   getJson<Insight | null>(`/api/v1/insights/${encodeURIComponent(slug)}`, null, ['insights']);
+
+// Kits & campaigns carry their own 'kits' tag so an admin kit/campaign/batch
+// save can invalidate them without dumping the whole product cache (and vice
+// versa). Note the `available` count in a cached response is a snapshot: it
+// also moves when unrelated orders ship, which fires no revalidation ping at
+// all. Purchase panels re-fetch it live on mount for that reason, and order
+// creation re-checks component stock regardless — treat any SSR'd
+// availability as advisory.
+export const getKitsServer = (params?: { limit?: number; campaignId?: string }) => {
+  const query: Record<string, string> = { limit: String(params?.limit ?? 100) };
+  if (params?.campaignId) query.campaignId = params.campaignId;
+
+  return getJson<PaginatedResponse<PublicKit>>(
+    `/api/v1/kits?${new URLSearchParams(query).toString()}`,
+    { data: [], pagination: { page: 1, limit: 0, total: 0, totalPages: 0 } },
+    ['kits']
+  );
+};
+
+export const getKitServer = (id: string) =>
+  getJson<PublicKit | null>(`/api/v1/kits/${encodeURIComponent(id)}`, null, ['kits']);
+
+export const getCampaignsServer = (params?: { limit?: number }) =>
+  getJson<PaginatedResponse<PublicCampaign>>(
+    `/api/v1/campaigns?limit=${params?.limit ?? 50}`,
+    { data: [], pagination: { page: 1, limit: 0, total: 0, totalPages: 0 } },
+    ['kits']
+  );
+
+export const getCampaignServer = (id: string) =>
+  getJson<PublicCampaign | null>(`/api/v1/campaigns/${encodeURIComponent(id)}`, null, ['kits']);

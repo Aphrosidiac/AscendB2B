@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { CreditCard, Wallet, ArrowLeft, CheckCircle, ShieldCheck, Truck, Lock, X, Tag, MapPin, Plus } from 'lucide-react';
-import { useCart } from '@/lib/cart';
+import { useCart, cartLineKey } from '@/lib/cart';
 import { useCompanyAuth } from '@/hooks/useCompanyAuth';
 import { createCompanyOrder, getSettings, validateDiscount, companyListAddresses } from '@/lib/api';
 import { formatPrice, getTieredPrice, cn } from '@/lib/utils';
@@ -165,7 +165,13 @@ export default function CheckoutPage() {
         shippingAddressId,
         notes: notes.trim() || undefined,
         payNow,
-        items: items.map((i) => ({ variantId: i.variantId, quantity: i.quantity })),
+        // variantId XOR kitId — the backend rejects an item carrying both, so
+        // send only the one this line actually has.
+        items: items.map((i) =>
+          i.kitId
+            ? { kitId: i.kitId, quantity: i.quantity }
+            : { variantId: i.variantId, quantity: i.quantity }
+        ),
         idempotencyKey: idempotencyKeyRef.current,
         ...(appliedDiscount ? { discountCode: appliedDiscount.code } : {}),
       });
@@ -352,7 +358,7 @@ export default function CheckoutPage() {
                 {items.map((item) => {
                   const unitPrice = getTieredPrice(item.priceTiers, item.quantity, item.price);
                   return (
-                    <div key={item.variantId} className="flex items-center gap-3">
+                    <div key={cartLineKey(item)} className="flex items-center gap-3">
                       <div className="w-10 h-10 bg-surface-elevated rounded-lg flex items-center justify-center shrink-0 overflow-hidden">
                         {item.imageUrl ? (
                           <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
@@ -361,8 +367,12 @@ export default function CheckoutPage() {
                         )}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-display font-bold truncate">{item.code}</p>
-                        <p className="text-xs text-text-muted truncate">{item.name} &middot; Qty: {item.quantity}</p>
+                        <p className="text-sm font-display font-bold truncate">
+                          {item.kitId ? item.name : item.code}
+                        </p>
+                        <p className="text-xs text-text-muted truncate">
+                          {item.kitId ? 'Kit' : item.name} &middot; Qty: {item.quantity}
+                        </p>
                       </div>
                       <p className="text-sm font-semibold shrink-0">{formatPrice(unitPrice * item.quantity)}</p>
                     </div>

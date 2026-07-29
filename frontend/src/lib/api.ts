@@ -20,6 +20,8 @@ import type {
   PreorderCampaign,
   Batch,
   Kit,
+  PublicKit,
+  PublicCampaign,
   AdminCompany,
 } from '@/types';
 
@@ -65,6 +67,23 @@ export const getProducts = (params?: { category?: string; search?: string; page?
 
 export const getProduct = (slug: string) =>
   api.get<Product>(`/api/v1/products/${slug}`).then((r) => r.data);
+
+// Public kits/campaigns. Both endpoints only ever return what's actually
+// orderable — an inactive kit, or one whose pre-order campaign isn't OPEN, is
+// filtered out server-side (backend/src/utils/kit-availability.ts), so these
+// need no extra client-side gating. `available` is how many whole kits could
+// be assembled from current component stock.
+export const getKits = (params?: { campaignId?: string; search?: string; page?: number; limit?: number }) =>
+  api.get<PaginatedResponse<PublicKit>>('/api/v1/kits', { params }).then((r) => r.data);
+
+export const getKit = (id: string) =>
+  api.get<PublicKit>(`/api/v1/kits/${id}`).then((r) => r.data);
+
+export const getCampaigns = (params?: { page?: number; limit?: number }) =>
+  api.get<PaginatedResponse<PublicCampaign>>('/api/v1/campaigns', { params }).then((r) => r.data);
+
+export const getCampaign = (id: string) =>
+  api.get<PublicCampaign>(`/api/v1/campaigns/${id}`).then((r) => r.data);
 
 export const createOrder = (data: {
   customerName: string;

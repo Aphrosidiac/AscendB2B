@@ -31,6 +31,7 @@ export function Navbar() {
   // of keeping room for the trade-account CTA without wrapping the nav.
   const links = [
     { href: '/products', label: 'Products' },
+    { href: '/kits', label: 'Kits' },
     { href: '/insights', label: 'Insights' },
     { href: '/calculator', label: 'Calculator' },
     ...(isAuthenticated ? [{ href: '/account/orders', label: 'My Orders' }] : []),

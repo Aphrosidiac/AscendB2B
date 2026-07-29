@@ -1,7 +1,7 @@
 import type { MetadataRoute } from 'next';
 import { execSync } from 'child_process';
 import path from 'path';
-import { getProductsServer, getInsightsServer } from '@/lib/server-api';
+import { getProductsServer, getInsightsServer, getKitsServer } from '@/lib/server-api';
 
 const BASE_URL = 'https://ascendpeptides.my';
 
@@ -27,6 +27,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const staticPages: MetadataRoute.Sitemap = [
     { url: BASE_URL, lastModified: lastModifiedFromGit('src/app/page.tsx'), changeFrequency: 'weekly', priority: 1 },
     { url: `${BASE_URL}/products`, lastModified: lastModifiedFromGit('src/app/products/page.tsx'), changeFrequency: 'daily', priority: 0.9 },
+    { url: `${BASE_URL}/kits`, lastModified: lastModifiedFromGit('src/app/kits/page.tsx'), changeFrequency: 'daily', priority: 0.8 },
     { url: `${BASE_URL}/insights`, lastModified: lastModifiedFromGit('src/app/insights/page.tsx'), changeFrequency: 'weekly', priority: 0.7 },
     { url: `${BASE_URL}/about`, lastModified: lastModifiedFromGit('src/app/about/page.tsx'), changeFrequency: 'monthly', priority: 0.5 },
     { url: `${BASE_URL}/faq`, lastModified: lastModifiedFromGit('src/app/faq/page.tsx'), changeFrequency: 'monthly', priority: 0.7 },
@@ -41,9 +42,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   ];
 
   try {
-    const [{ data: products }, { data: insights }] = await Promise.all([
+    const [{ data: products }, { data: insights }, { data: kits }] = await Promise.all([
       getProductsServer({ limit: 100 }),
       getInsightsServer({ limit: 100 }),
+      getKitsServer({ limit: 100 }),
     ]);
 
     const productPages: MetadataRoute.Sitemap = products.map((p) => ({
@@ -60,7 +62,19 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       priority: 0.6,
     }));
 
-    return [...staticPages, ...productPages, ...insightPages];
+    // Only currently-offerable kits are returned by the endpoint at all, so a
+    // kit whose campaign has closed drops out of the sitemap on the next
+    // regeneration — the same page 404s by then, so listing it would be a
+    // soft-404 signal. Campaign pages are deliberately not listed: they're
+    // short-lived and their substance is the kits, which are listed here.
+    const kitPages: MetadataRoute.Sitemap = kits.map((k) => ({
+      url: `${BASE_URL}/kits/${k.id}`,
+      lastModified: new Date(k.updatedAt),
+      changeFrequency: 'daily' as const,
+      priority: 0.7,
+    }));
+
+    return [...staticPages, ...productPages, ...insightPages, ...kitPages];
   } catch {
     return staticPages;
   }

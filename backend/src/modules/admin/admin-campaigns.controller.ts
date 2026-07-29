@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { getPaginationParams, paginatedResponse } from '../../utils/pagination.js';
+import { notifyRevalidate } from '../../utils/revalidate.js';
 
 function checkCampaignDateOrder(data: { opensAt?: string; closesAt?: string }, ctx: z.RefinementCtx) {
   if (data.opensAt && data.closesAt && new Date(data.opensAt) > new Date(data.closesAt)) {
@@ -71,7 +72,7 @@ export async function adminGetCampaign(fastify: FastifyInstance, id: string) {
 
 export async function adminCreateCampaign(fastify: FastifyInstance, body: unknown) {
   const data = createCampaignSchema.parse(body);
-  return fastify.prisma.preorderCampaign.create({
+  const created = await fastify.prisma.preorderCampaign.create({
     data: {
       name: data.name,
       status: data.status,
@@ -80,6 +81,12 @@ export async function adminCreateCampaign(fastify: FastifyInstance, body: unknow
       estimatedArrival: new Date(data.estimatedArrival),
     },
   });
+
+  // A campaign's status is what makes its kits publicly visible at all
+  // (PUBLIC_KIT_WHERE), so flipping it to/from OPEN must invalidate the
+  // storefront immediately rather than waiting out the cache window.
+  notifyRevalidate(['kits']);
+  return created;
 }
 
 export async function adminUpdateCampaign(fastify: FastifyInstance, id: string, body: unknown) {
@@ -87,10 +94,13 @@ export async function adminUpdateCampaign(fastify: FastifyInstance, id: string, 
   const existing = await fastify.prisma.preorderCampaign.findUnique({ where: { id } });
   if (!existing) throw { statusCode: 404, message: 'Campaign not found' };
 
-  return fastify.prisma.preorderCampaign.update({
+  const updated = await fastify.prisma.preorderCampaign.update({
     where: { id },
     data: { name: data.name, status: data.status, ...toCampaignData(data) },
   });
+
+  notifyRevalidate(['kits']);
+  return updated;
 }
 
 export async function adminDeleteCampaign(fastify: FastifyInstance, id: string) {
@@ -101,5 +111,6 @@ export async function adminDeleteCampaign(fastify: FastifyInstance, id: string) 
   // migration) — deleting a campaign just detaches its batches/kits rather
   // than being blocked or cascading, so this can never hit a P2003.
   await fastify.prisma.preorderCampaign.delete({ where: { id } });
+  notifyRevalidate(['kits']);
   return { success: true };
 }

@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { getPaginationParams, paginatedResponse } from '../../utils/pagination.js';
+import { notifyRevalidate } from '../../utils/revalidate.js';
 
 // Present = update this existing item; absent = create a new one. Any
 // existing item not present in the submitted array gets deleted — same
@@ -63,13 +64,16 @@ export async function adminGetKit(fastify: FastifyInstance, id: string) {
 export async function adminCreateKit(fastify: FastifyInstance, body: unknown) {
   const { items, ...data } = createKitSchema.parse(body);
 
-  return fastify.prisma.$transaction(async (tx) => {
+  const created = await fastify.prisma.$transaction(async (tx) => {
     const kit = await tx.kit.create({ data });
     await tx.kitItem.createMany({
       data: items.map((i) => ({ kitId: kit.id, variantId: i.variantId, quantity: i.quantity })),
     });
     return tx.kit.findUniqueOrThrow({ where: { id: kit.id }, include: KIT_INCLUDE });
   });
+
+  notifyRevalidate(['kits']);
+  return created;
 }
 
 export async function adminUpdateKit(fastify: FastifyInstance, id: string, body: unknown) {
@@ -78,7 +82,7 @@ export async function adminUpdateKit(fastify: FastifyInstance, id: string, body:
   const existing = await fastify.prisma.kit.findUnique({ where: { id }, include: { items: true } });
   if (!existing) throw { statusCode: 404, message: 'Kit not found' };
 
-  return fastify.prisma.$transaction(async (tx) => {
+  const updated = await fastify.prisma.$transaction(async (tx) => {
     await tx.kit.update({ where: { id }, data });
 
     if (items !== undefined) {
@@ -104,6 +108,9 @@ export async function adminUpdateKit(fastify: FastifyInstance, id: string, body:
 
     return tx.kit.findUniqueOrThrow({ where: { id }, include: KIT_INCLUDE });
   });
+
+  notifyRevalidate(['kits']);
+  return updated;
 }
 
 export async function adminDeleteKit(fastify: FastifyInstance, id: string) {
@@ -116,5 +123,6 @@ export async function adminDeleteKit(fastify: FastifyInstance, id: string) {
   // is needed. Historical order/quote lines keep their own snapshotted
   // quantity/unitPrice; only the kit reference itself is cleared.
   await fastify.prisma.kit.delete({ where: { id } });
+  notifyRevalidate(['kits']);
   return { success: true };
 }

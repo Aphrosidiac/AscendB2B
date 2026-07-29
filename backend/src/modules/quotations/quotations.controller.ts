@@ -5,6 +5,7 @@ import { getPaginationParams, paginatedResponse } from '../../utils/pagination.j
 import { generateQuoteNumber } from '../../utils/quote-number.js';
 import { generateOrderNumber } from '../../utils/order-number.js';
 import { generateQuotationPdf } from '../../utils/quotation-pdf.js';
+import { PUBLIC_KIT_WHERE } from '../../utils/kit-availability.js';
 
 const quotationItemInputSchema = z.object({
   variantId: z.string().optional(),
@@ -53,7 +54,9 @@ export async function requestQuotation(fastify: FastifyInstance, companyId: stri
 
   const [variants, kits, company] = await Promise.all([
     variantIds.length ? fastify.prisma.productVariant.findMany({ where: { id: { in: variantIds } }, select: { id: true } }) : Promise.resolve([]),
-    kitIds.length ? fastify.prisma.kit.findMany({ where: { id: { in: kitIds } }, select: { id: true } }) : Promise.resolve([]),
+    // Same public-offerability rule as createOrder — quoting a draft or
+    // closed-campaign kit would only produce a quote that can't be converted.
+    kitIds.length ? fastify.prisma.kit.findMany({ where: { id: { in: kitIds }, ...PUBLIC_KIT_WHERE }, select: { id: true } }) : Promise.resolve([]),
     fastify.prisma.company.findUnique({ where: { id: companyId }, select: { contactName: true } }),
   ]);
 
@@ -64,7 +67,7 @@ export async function requestQuotation(fastify: FastifyInstance, companyId: stri
       throw { statusCode: 400, message: `Product variant ${item.variantId} not found` };
     }
     if (item.kitId && !foundKitIds.has(item.kitId)) {
-      throw { statusCode: 400, message: `Kit ${item.kitId} not found` };
+      throw { statusCode: 400, message: `Kit ${item.kitId} is no longer available (inactive, or its pre-order campaign has closed)` };
     }
   }
 

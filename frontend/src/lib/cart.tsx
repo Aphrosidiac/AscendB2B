@@ -16,9 +16,22 @@ interface CartState {
 type CartAction =
   | { type: 'ADD_ITEM'; payload: CartItem }
   | { type: 'REMOVE_ITEM'; payload: string }
-  | { type: 'UPDATE_QUANTITY'; payload: { variantId: string; quantity: number } }
+  | { type: 'UPDATE_QUANTITY'; payload: { key: string; quantity: number } }
   | { type: 'CLEAR' }
   | { type: 'LOAD'; payload: CartItem[] };
+
+/**
+ * Stable identity for a cart line. A line is either a variant or a kit, so
+ * neither id alone is unique across the cart — and the two id spaces are
+ * separate cuid sequences that could in principle collide. Prefixing keeps a
+ * kit and a variant that happen to share an id as distinct lines.
+ *
+ * Every consumer (React keys, removeItem, updateQuantity) must go through
+ * this rather than reading item.variantId, which is undefined on kit lines.
+ */
+export function cartLineKey(item: Pick<CartItem, 'variantId' | 'kitId'>): string {
+  return item.kitId ? `kit:${item.kitId}` : `variant:${item.variantId}`;
+}
 
 // Clamps to the variant's stock ceiling AND its MOQ floor — a bulk-only SKU
 // can't be dragged below its minimum order quantity from the cart, same as
@@ -34,12 +47,13 @@ function clampQuantity(quantity: number, stock: number | undefined, moq: number 
 function cartReducer(state: CartState, action: CartAction): CartState {
   switch (action.type) {
     case 'ADD_ITEM': {
-      const existing = state.items.find((i) => i.variantId === action.payload.variantId);
+      const addedKey = cartLineKey(action.payload);
+      const existing = state.items.find((i) => cartLineKey(i) === addedKey);
       if (existing) {
         return {
           ...state,
           items: state.items.map((i) =>
-            i.variantId === action.payload.variantId
+            cartLineKey(i) === addedKey
               // Clamp the merged quantity to the variant's stock/moq so
               // repeated adds can't push the line past what's actually
               // available, or back under its purchase floor.
@@ -59,12 +73,12 @@ function cartReducer(state: CartState, action: CartAction): CartState {
       };
     }
     case 'REMOVE_ITEM':
-      return { ...state, items: state.items.filter((i) => i.variantId !== action.payload) };
+      return { ...state, items: state.items.filter((i) => cartLineKey(i) !== action.payload) };
     case 'UPDATE_QUANTITY':
       return {
         ...state,
         items: state.items.map((i) =>
-          i.variantId === action.payload.variantId
+          cartLineKey(i) === action.payload.key
             ? { ...i, quantity: clampQuantity(action.payload.quantity, i.stock, i.moq) }
             : i
         ),
@@ -81,8 +95,10 @@ interface CartContextType {
   // See CartState.hydrated.
   hydrated: boolean;
   addItem: (item: CartItem) => void;
-  removeItem: (variantId: string) => void;
-  updateQuantity: (variantId: string, quantity: number) => void;
+  // Both take a cartLineKey(item), not a raw variantId — kit lines have no
+  // variantId to pass.
+  removeItem: (key: string) => void;
+  updateQuantity: (key: string, quantity: number) => void;
   clearCart: () => void;
   total: number;
   itemCount: number;
@@ -108,10 +124,15 @@ export function CartProvider({ children }: { children: ReactNode }) {
         // as-is when it became a ProductVariant, so an old saved id is still
         // a perfectly valid variantId. Silently upgrade the shape on load
         // rather than requiring a version bump or discarding the cart.
-        items = parsed.map((item: CartItem & { productId?: string }) => ({
-          ...item,
-          variantId: item.variantId ?? item.productId,
-        }));
+        items = parsed
+          .map((item: CartItem & { productId?: string }) => ({
+            ...item,
+            variantId: item.variantId ?? item.productId,
+          }))
+          // A line with neither id is unusable — it can't be keyed, priced, or
+          // sent to the order endpoint. Drop it rather than let it collide
+          // with other malformed lines under a shared "variant:undefined" key.
+          .filter((item: CartItem) => Boolean(item.variantId || item.kitId));
       } catch {}
     }
     dispatch({ type: 'LOAD', payload: items });
@@ -141,8 +162,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
       items: state.items,
       hydrated: state.hydrated,
       addItem,
-      removeItem: (id) => dispatch({ type: 'REMOVE_ITEM', payload: id }),
-      updateQuantity: (id, qty) => dispatch({ type: 'UPDATE_QUANTITY', payload: { variantId: id, quantity: qty } }),
+      removeItem: (key) => dispatch({ type: 'REMOVE_ITEM', payload: key }),
+      updateQuantity: (key, qty) => dispatch({ type: 'UPDATE_QUANTITY', payload: { key, quantity: qty } }),
       clearCart: () => dispatch({ type: 'CLEAR' }),
       total,
       itemCount,

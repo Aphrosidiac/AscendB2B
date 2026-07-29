@@ -26,6 +26,8 @@ import adminUploadRoutes from './modules/admin/admin-upload.routes.js';
 import adminDiscountRoutes from './modules/admin/admin-discounts.routes.js';
 import paymentRoutes from './modules/payments/payments.routes.js';
 import insightRoutes from './modules/insights/insights.routes.js';
+import kitRoutes from './modules/kits/kits.routes.js';
+import campaignRoutes from './modules/campaigns/campaigns.routes.js';
 import adminInsightRoutes from './modules/admin/admin-insights.routes.js';
 import resendWebhookRoutes from './modules/webhooks/resend-webhook.routes.js';
 import companyRoutes from './modules/companies/companies.routes.js';
@@ -97,6 +99,8 @@ fastify.get('/health', async () => ({ status: 'ok', timestamp: new Date().toISOS
 await fastify.register(categoryRoutes, { prefix: '/api/v1/categories' });
 await fastify.register(productRoutes, { prefix: '/api/v1/products' });
 await fastify.register(orderRoutes, { prefix: '/api/v1/orders' });
+await fastify.register(kitRoutes, { prefix: '/api/v1/kits' });
+await fastify.register(campaignRoutes, { prefix: '/api/v1/campaigns' });
 await fastify.register(authRoutes, { prefix: '/api/v1/auth' });
 await fastify.register(publicSettingsRoutes, { prefix: '/api/v1/settings' });
 await fastify.register(adminProductRoutes, { prefix: '/api/v1/admin/products' });
