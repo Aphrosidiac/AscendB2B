@@ -1,5 +1,5 @@
 import { Suspense } from 'react';
-import { ProductsGrid } from './ProductsGrid';
+import { ProductsList } from './ProductsList';
 import { ProductsFilters } from './ProductsFilters';
 import { getCategoriesServer, getProductsServer } from '@/lib/server-api';
 import { JsonLd } from '@/components/JsonLd';
@@ -30,15 +30,17 @@ interface ProductsPageProps {
   searchParams: Promise<{ category?: string; search?: string }>;
 }
 
-function GridSkeleton() {
+// Mirrors the real list's row rhythm so the swap-in doesn't jump the page.
+function ListSkeleton() {
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-      {Array.from({ length: 8 }).map((_, i) => (
-        <div key={i} className="bg-surface rounded-xl border border-border p-4 animate-pulse">
-          <div className="aspect-square bg-surface-elevated rounded-lg mb-4" />
-          <div className="h-3 bg-surface-elevated rounded w-1/3 mb-2" />
-          <div className="h-4 bg-surface-elevated rounded w-2/3 mb-2" />
-          <div className="h-5 bg-surface-elevated rounded w-1/4" />
+    <div className="bg-surface rounded-xl border border-border divide-y divide-border">
+      {Array.from({ length: 12 }).map((_, i) => (
+        <div key={i} className="flex items-center gap-4 px-4 py-3 animate-pulse">
+          <div className="h-4 bg-surface-elevated rounded w-16 shrink-0" />
+          <div className="h-4 bg-surface-elevated rounded w-48" />
+          <div className="h-4 bg-surface-elevated rounded w-24 hidden md:block" />
+          <div className="h-4 bg-surface-elevated rounded w-16 ml-auto" />
+          <div className="h-7 bg-surface-elevated rounded-lg w-16 shrink-0 hidden md:block" />
         </div>
       ))}
     </div>
@@ -60,14 +62,15 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
       <h1 className="font-display text-3xl font-bold mb-3">Wholesale Peptide Catalogue</h1>
       <p className="text-text-secondary mb-8 max-w-2xl leading-relaxed">
         ASCEND&apos;s full trade range — including Retatrutide, GHK-Cu, BPC-157, Tesamorelin, MOTS-c and
-        AOD9604. Every compound is lab-grade and tested to 99%+ purity. Unit prices below are per-unit
-        at quantity one; bulk quantity breaks apply automatically as volume rises.
+        AOD9604. Every compound is lab-grade and tested to 99%+ purity. One line per SKU: unit price is
+        per unit at quantity one, and the bulk price is the deepest quantity break available, applied
+        automatically as volume rises.
       </p>
 
       <ProductsFilters categories={categories} selectedCategory={category ?? null} search={search ?? ''} />
 
-      <Suspense key={`${category ?? ''}:${search ?? ''}`} fallback={<GridSkeleton />}>
-        <ProductsGrid category={category} search={search} />
+      <Suspense key={`${category ?? ''}:${search ?? ''}`} fallback={<ListSkeleton />}>
+        <ProductsList category={category} search={search} />
       </Suspense>
     </div>
   );
