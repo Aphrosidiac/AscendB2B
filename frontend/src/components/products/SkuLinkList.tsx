@@ -4,23 +4,27 @@ import { formatPrice, getDefaultVariant, getEffectivePrice } from '@/lib/utils';
 import { Animate } from '@/components/ui/Animate';
 
 interface SkuLinkListProps {
-  title: string;
+  // Optional so a caller that already renders its own section heading (the
+  // homepage, which pairs the heading with a "View all" link) isn't forced to
+  // pass an empty string.
+  title?: string;
   subtitle?: string;
   products: Product[];
   delay?: number;
 }
 
-// Picture-free cross-sell for the product page, replacing the image-card
-// rails. A buyer only needs the code, the compound and what it costs to
-// decide whether to open it. (ProductCard itself is still alive, used by the
-// homepage grid, which deliberately keeps its imagery.)
+// Compact picture-free product list — the product page's cross-sell rails and
+// the homepage's Featured section. A buyer only needs the code, the compound
+// and what it costs to decide whether to open it. This (with ProductsTable)
+// replaced the image-card components entirely; there is no product photography
+// left anywhere on the storefront.
 export function SkuLinkList({ title, subtitle, products, delay = 0.3 }: SkuLinkListProps) {
   if (products.length === 0) return null;
 
   return (
     <Animate variant="fadeUp" delay={delay}>
-      <div className="mt-10">
-        <h2 className="font-display font-semibold text-lg mb-1">{title}</h2>
+      <div className={title ? 'mt-10' : undefined}>
+        {title && <h2 className="font-display font-semibold text-lg mb-1">{title}</h2>}
         {subtitle && <p className="text-sm text-text-secondary mb-3">{subtitle}</p>}
         {!subtitle && <div className="mb-3" />}
         <ul className="bg-surface rounded-xl border border-border divide-y divide-border">

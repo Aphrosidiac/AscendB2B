@@ -3,16 +3,16 @@
 import { useCallback } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { ArrowRight, FileText, Layers, FlaskConical, CreditCard } from 'lucide-react';
+import { ArrowRight, FileText, Layers, FlaskConical, CreditCard, CalendarClock, Package } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
-import { ProductCard } from '@/components/products/ProductCard';
+import { SkuLinkList } from '@/components/products/SkuLinkList';
 import { Animate, Stagger } from '@/components/ui/Animate';
 import { MolecularNetwork } from '@/components/ui/MolecularNetwork';
 import { VideoStrip } from '@/components/ui/VideoStrip';
 import { HardsellCarousel } from '@/components/home/HardsellCarousel';
 import type { HardsellAccent } from '@/components/home/HardsellSlide';
 import { getCategoryIcon } from '@/lib/category-icons';
-import type { Product, Category } from '@/types';
+import type { Product, Category, PublicCampaign } from '@/types';
 
 // Both hardsell slides share one accent — the green/blue split this used to
 // have was the only place on the site that broke the monochrome-accent rule.
@@ -30,6 +30,9 @@ const MONO_ACCENT: HardsellAccent = {
 interface HomeClientProps {
   products: Product[];
   categories: Category[];
+  // Currently-open pre-order campaigns. Empty is the normal state — the
+  // section simply doesn't render rather than showing an empty placeholder.
+  openCampaigns: PublicCampaign[];
   freeShipping: boolean;
   hardsellProduct: Product | null;
   hardsellHeadline: string;
@@ -42,6 +45,7 @@ interface HomeClientProps {
 export function HomeClient({
   products,
   categories,
+  openCampaigns,
   freeShipping,
   hardsellProduct,
   hardsellHeadline,
@@ -200,6 +204,88 @@ export function HomeClient({
         return slides.length > 0 && <HardsellCarousel slides={slides} />;
       })()}
 
+      {/* Open pre-order campaigns. Time-limited and easy to miss, so they sit
+          above the catalogue rather than being buried behind the Kits nav
+          entry. Renders nothing at all when no campaign is open. */}
+      {openCampaigns.length > 0 && (
+        <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+          <Animate variant="fadeUp">
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="font-display text-2xl md:text-3xl font-bold">Open for pre-order</h2>
+              <Link
+                href="/kits"
+                className="text-sm font-medium text-text-secondary hover:text-text-primary transition-colors whitespace-nowrap"
+              >
+                All kits <ArrowRight className="w-4 h-4 inline" />
+              </Link>
+            </div>
+            <p className="text-text-secondary mb-6 max-w-2xl">
+              Secure allocation from an incoming batch before it lands. Kits are priced per kit and
+              list exactly what they contain.
+            </p>
+          </Animate>
+          {/* Full-width rows rather than a 2-up card grid: there is usually
+              exactly one open campaign, and a half-width card left a visibly
+              lopsided gap. Stacking also matches the list-over-cards direction
+              of the rest of the storefront. */}
+          <Stagger className="space-y-3" stagger={0.08}>
+            {openCampaigns.map((campaign) => (
+              <Link
+                key={campaign.id}
+                href={`/campaigns/${campaign.id}`}
+                className="group block bg-surface rounded-xl border border-border hover:border-border-hover hover:shadow-md transition-all duration-300 p-5 sm:p-6"
+              >
+                <div className="flex items-center justify-between gap-3 mb-4">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <CalendarClock className="w-4 h-4 text-text-muted shrink-0" />
+                    <h3 className="font-display font-semibold text-lg truncate group-hover:text-primary-light transition-colors">
+                      {campaign.name}
+                    </h3>
+                  </div>
+                  <ArrowRight className="w-4 h-4 text-text-muted shrink-0 group-hover:translate-x-0.5 transition-transform" />
+                </div>
+                <dl className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+                  <div>
+                    <dt className="text-xs text-text-muted uppercase tracking-wider">Closes</dt>
+                    <dd className="text-text-secondary mt-0.5">
+                      {new Date(campaign.closesAt).toLocaleDateString('en-MY', {
+                        day: 'numeric',
+                        month: 'short',
+                        year: 'numeric',
+                      })}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-text-muted uppercase tracking-wider">Est. arrival</dt>
+                    <dd className="text-text-secondary mt-0.5">
+                      {new Date(campaign.estimatedArrival).toLocaleDateString('en-MY', {
+                        day: 'numeric',
+                        month: 'short',
+                        year: 'numeric',
+                      })}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-text-muted uppercase tracking-wider">Kits</dt>
+                    <dd className="text-text-secondary mt-0.5 inline-flex items-center gap-1.5">
+                      <Package className="w-3.5 h-3.5 shrink-0 text-text-muted" />
+                      {campaign.kits.length}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-text-muted uppercase tracking-wider">Arriving</dt>
+                    <dd className="text-text-secondary mt-0.5">
+                      {campaign.batches.length}{' '}
+                      {campaign.batches.length === 1 ? 'line' : 'lines'}
+                    </dd>
+                  </div>
+                </dl>
+              </Link>
+            ))}
+          </Stagger>
+        </section>
+      )}
+
       {/* Categories */}
       {categories.length > 0 && (
         <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
@@ -231,22 +317,19 @@ export function HomeClient({
       {/* Video Divider */}
       <VideoStrip src="/videos/lab-glassware.mp4" height="120px" overlay={0.35} />
 
-      {/* Featured Products */}
+      {/* Featured Products — a price list, not an image grid, matching
+          /products and the product page. */}
       {products.length > 0 && (
-        <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+        <section className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
           <Animate variant="fadeUp">
-            <div className="flex items-center justify-between mb-8">
+            <div className="flex items-center justify-between mb-2">
               <h2 className="font-display text-2xl md:text-3xl font-bold">Featured Products</h2>
-              <Link href="/products" className="text-sm font-medium text-text-secondary hover:text-text-primary transition-colors">
-                View All <ArrowRight className="w-4 h-4 inline" />
+              <Link href="/products" className="text-sm font-medium text-text-secondary hover:text-text-primary transition-colors whitespace-nowrap">
+                View all <ArrowRight className="w-4 h-4 inline" />
               </Link>
             </div>
           </Animate>
-          <Stagger className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4" stagger={0.06}>
-            {products.map((product) => (
-              <ProductCard key={product.id} product={product} />
-            ))}
-          </Stagger>
+          <SkuLinkList products={products} delay={0.05} />
         </section>
       )}
 

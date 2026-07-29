@@ -1,11 +1,20 @@
 import { HomeClient } from './HomeClient';
-import { getProductsServer, getCategoriesServer, getSettingsServer, getProductServer } from '@/lib/server-api';
+import {
+  getProductsServer,
+  getCategoriesServer,
+  getSettingsServer,
+  getProductServer,
+  getCampaignsServer,
+} from '@/lib/server-api';
 
 export default async function HomePage() {
-  const [featuredRes, categories, settings] = await Promise.all([
+  const [featuredRes, categories, settings, campaignsRes] = await Promise.all([
     getProductsServer({ featured: true, limit: 8 }),
     getCategoriesServer(),
     getSettingsServer(),
+    // Only OPEN campaigns come back from this endpoint, so a non-empty list
+    // means there is genuinely something a buyer can pre-order right now.
+    getCampaignsServer({ limit: 3 }),
   ]);
 
   const products =
@@ -28,6 +37,7 @@ export default async function HomePage() {
     <HomeClient
       products={products}
       categories={categories}
+      openCampaigns={campaignsRes.data}
       freeShipping={freeShipping}
       hardsellProduct={hardsellProduct}
       hardsellHeadline={settings.hardsell_headline || ''}
