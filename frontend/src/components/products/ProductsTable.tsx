@@ -1,10 +1,12 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { ShoppingCart, Check } from 'lucide-react';
 import { useState } from 'react';
 import type { Product, ProductVariant } from '@/types';
 import { formatPrice, getEffectivePrice, getVariantDisplayName, isSaleActive } from '@/lib/utils';
+import { rowLink } from '@/lib/row-link';
 import { useCart } from '@/lib/cart';
 
 interface ProductsTableProps {
@@ -81,6 +83,7 @@ function useAddSku() {
 export function ProductsTable({ products, showCategory = true }: ProductsTableProps) {
   const rows = flatten(products);
   const { add, addedId } = useAddSku();
+  const router = useRouter();
 
   if (rows.length === 0) {
     return (
@@ -121,7 +124,11 @@ export function ProductsTable({ products, showCategory = true }: ProductsTablePr
               const onSale = isSaleActive(variant);
               const added = addedId === variant.id;
               return (
-                <tr key={variant.id} className="hover:bg-surface-elevated/60 transition-colors">
+                <tr
+                  key={variant.id}
+                  {...rowLink(() => router.push(`/products/${product.slug}`))}
+                  className="hover:bg-surface-elevated/60 transition-colors cursor-pointer"
+                >
                   <td className="whitespace-nowrap px-4 py-2.5">
                     <Link
                       href={`/products/${product.slug}`}
@@ -208,7 +215,11 @@ export function ProductsTable({ products, showCategory = true }: ProductsTablePr
           const onSale = isSaleActive(variant);
           const added = addedId === variant.id;
           return (
-            <div key={variant.id} className="p-4">
+            <div
+              key={variant.id}
+              {...rowLink(() => router.push(`/products/${product.slug}`))}
+              className="p-4 active:bg-surface-elevated/60 transition-colors cursor-pointer"
+            >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <Link href={`/products/${product.slug}`} className="block">
