@@ -1,4 +1,4 @@
-import type { Category, PaginatedResponse, Product, Insight, PublicKit, PublicCampaign } from '@/types';
+import type { Category, PaginatedResponse, Product, PublicKit, PublicCampaign } from '@/types';
 
 // Server-side data fetching for SSR/metadata. The browser talks to the API via the
 // nginx-proxied relative /api path, so NEXT_PUBLIC_API_URL is empty in prod — server
@@ -43,20 +43,6 @@ export const getProductsServer = (params?: {
     { data: [], pagination: { page: 1, limit: 0, total: 0, totalPages: 0 } }
   );
 };
-
-export const getInsightsServer = (params?: { category?: string; limit?: number }) => {
-  const query: Record<string, string> = { limit: String(params?.limit ?? 100) };
-  if (params?.category) query.category = params.category;
-
-  return getJson<PaginatedResponse<Insight>>(
-    `/api/v1/insights?${new URLSearchParams(query).toString()}`,
-    { data: [], pagination: { page: 1, limit: 0, total: 0, totalPages: 0 } },
-    ['insights']
-  );
-};
-
-export const getInsightServer = (slug: string) =>
-  getJson<Insight | null>(`/api/v1/insights/${encodeURIComponent(slug)}`, null, ['insights']);
 
 // Kits & campaigns carry their own 'kits' tag so an admin kit/campaign/batch
 // save can invalidate them without dumping the whole product cache (and vice

@@ -1,15 +1,14 @@
-import { formatPrice, formatShortDate } from '@/lib/utils';
-import { getProductsServer, getSettingsServer, getInsightsServer } from '@/lib/server-api';
+import { formatPrice } from '@/lib/utils';
+import { getProductsServer, getSettingsServer } from '@/lib/server-api';
 
 const BASE_URL = 'https://ascendpeptides.my';
 
 export const revalidate = 3600;
 
 export async function GET() {
-  const [{ data: products }, settings, { data: insights }] = await Promise.all([
+  const [{ data: products }, settings] = await Promise.all([
     getProductsServer({ limit: 100 }),
     getSettingsServer(),
-    getInsightsServer({ limit: 100 }),
   ]);
 
   const shippingFee = settings.shipping_fee || '';
@@ -30,11 +29,6 @@ export async function GET() {
     return `- [${p.name}](${BASE_URL}/products/${p.slug}): ${price}${cat}`;
   });
 
-  const insightLines = insights.map((i) => {
-    const date = i.publishedAt ?? i.createdAt;
-    return `- [${i.title}](${BASE_URL}/insights/${i.slug}): ${i.category} — ${formatShortDate(date)}, by ${i.authorName}`;
-  });
-
   const body = [
     '# ASCEND — Research Peptides Malaysia',
     '',
@@ -42,8 +36,7 @@ export async function GET() {
     '',
     '## Key pages',
     `- [Shop all peptides](${BASE_URL}/products): Full catalog with live MYR pricing and stock`,
-    `- [Insights](${BASE_URL}/insights): Peptide research commentary and product updates, written by Asywa, Founder & CEO of ASCEND`,
-    `- [Reconstitution dose calculator](${BASE_URL}/calculator): Interactive BAC water / concentration calculator`,
+    `- [Kits & pre-orders](${BASE_URL}/kits): Pre-assembled kits at a fixed price per kit, and open pre-order campaigns with expected arrival dates`,
     `- [Peptide guide](${BASE_URL}/guide): Reconstitution, storage and handling`,
     `- [Certificates of Analysis](${BASE_URL}/coa): Third-party testing methodology and how to request a batch COA`,
     `- [FAQ](${BASE_URL}/faq): Purity, COA, shipping, ordering and payment questions`,
@@ -55,7 +48,6 @@ export async function GET() {
     '',
     '## Products',
     ...productLines,
-    ...(insightLines.length > 0 ? ['', '## Insights', ...insightLines] : []),
     '',
     '## Key facts',
     '- Market served: Malaysia (shipping across Peninsular Malaysia; Sabah and Sarawak are not currently served).',

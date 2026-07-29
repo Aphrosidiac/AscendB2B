@@ -32,8 +32,6 @@ export function Navbar() {
   const links = [
     { href: '/products', label: 'Products' },
     { href: '/kits', label: 'Kits' },
-    { href: '/insights', label: 'Insights' },
-    { href: '/calculator', label: 'Calculator' },
     ...(isAuthenticated ? [{ href: '/account/orders', label: 'My Orders' }] : []),
     { href: '/about', label: 'About' },
     { href: isAuthenticated ? '/account' : '/login', label: isAuthenticated ? 'Account' : 'Sign In' },

@@ -89,8 +89,9 @@ export function formatDate(date: string): string {
   });
 }
 
-// Day-only variant of formatDate, for editorial timestamps (Insights) where
-// a publish time-of-day isn't meaningful the way an order timestamp is.
+// Day-only variant of formatDate, for dates where a time-of-day isn't
+// meaningful the way an order timestamp is (invoice issue/due dates,
+// shipment dates, analytics period bounds).
 export function formatShortDate(date: string): string {
   return new Date(date).toLocaleDateString('en-MY', { year: 'numeric', month: 'short', day: 'numeric' });
 }

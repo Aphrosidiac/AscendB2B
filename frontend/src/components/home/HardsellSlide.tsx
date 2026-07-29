@@ -1,9 +1,9 @@
 import Link from 'next/link';
 import Image from 'next/image';
-import { ArrowRight, ShieldCheck, FileText, Check, Gift, Flame } from 'lucide-react';
+import { ArrowRight, ShieldCheck, Check, Gift, Flame } from 'lucide-react';
 import { Animate } from '@/components/ui/Animate';
 import { formatPrice, getDefaultVariant, getEffectivePrice, isSaleActive } from '@/lib/utils';
-import type { Product, Insight } from '@/types';
+import type { Product } from '@/types';
 
 export interface HardsellAccent {
   // Solid fill for badges/CTA — paired with white text for contrast.
@@ -21,7 +21,6 @@ export interface HardsellAccent {
 
 export interface HardsellSlideProps {
   product: Product;
-  researchArticle: Insight | null;
   // Owner-authored copy — this component never invents marketing claims
   // of its own. Falls back to a plain, compliant default (product name)
   // if left unset.
@@ -36,7 +35,7 @@ export interface HardsellSlideProps {
 // fabricated countdown.
 const LOW_STOCK_THRESHOLD = 5;
 
-export function HardsellSlide({ product, researchArticle, headline, subheadline, accent }: HardsellSlideProps) {
+export function HardsellSlide({ product, headline, subheadline, accent }: HardsellSlideProps) {
   const activeVariants = product.variants.filter((v) => v.active);
   const variant = getDefaultVariant(product);
   const priceRange = activeVariants.length > 1 && new Set(activeVariants.map((v) => v.price)).size > 1;
@@ -207,14 +206,6 @@ export function HardsellSlide({ product, researchArticle, headline, subheadline,
                   >
                     <ShieldCheck className="w-4 h-4" style={{ color: accent.bright }} /> Third-Party Lab Tested
                   </a>
-                )}
-                {researchArticle && (
-                  <Link
-                    href={`/insights/${researchArticle.slug}`}
-                    className="inline-flex items-center gap-1.5 hover:text-white transition-colors"
-                  >
-                    <FileText className="w-4 h-4" style={{ color: accent.bright }} /> Backed by Published Research
-                  </Link>
                 )}
               </div>
             </Animate>

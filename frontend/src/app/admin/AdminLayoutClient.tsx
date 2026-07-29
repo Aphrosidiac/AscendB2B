@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { LayoutDashboard, Package, ShoppingBag, Settings, LogOut, Menu, X, Tag, BarChart3, Newspaper, Mail, Rocket, Layers, PackagePlus, FileText, Building2, Truck, Receipt } from 'lucide-react';
+import { LayoutDashboard, Package, ShoppingBag, Settings, LogOut, Menu, X, Tag, BarChart3, Mail, Rocket, Layers, PackagePlus, FileText, Building2, Truck, Receipt } from 'lucide-react';
 import { useAuth, AuthProvider } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
 
@@ -11,7 +11,6 @@ const navItems = [
   { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/admin/analytics', label: 'Analytics', icon: BarChart3 },
   { href: '/admin/products', label: 'Products', icon: Package },
-  { href: '/admin/insights', label: 'Insights', icon: Newspaper },
   // Orders -> Shipments -> Invoices -> Quotations reads as the actual order
   // lifecycle, so the three worklists sit together rather than scattered.
   { href: '/admin/orders', label: 'Orders', icon: ShoppingBag },

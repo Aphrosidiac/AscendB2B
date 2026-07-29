@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 // Triggered by the backend (fire-and-forget, see backend/src/utils/revalidate.ts)
 // after any admin create/update/delete. Server-side fetches in lib/server-api.ts
-// are tagged per content type ('products', 'insights', ...); without this, a
+// are tagged per content type ('products', 'kits', ...); without this, a
 // save is correct in the DB immediately but the storefront keeps serving its
 // cached render for up to the fetch's own revalidate window.
 export async function POST(request: NextRequest) {

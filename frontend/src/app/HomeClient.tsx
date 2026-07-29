@@ -12,7 +12,7 @@ import { VideoStrip } from '@/components/ui/VideoStrip';
 import { HardsellCarousel } from '@/components/home/HardsellCarousel';
 import type { HardsellAccent } from '@/components/home/HardsellSlide';
 import { getCategoryIcon } from '@/lib/category-icons';
-import type { Product, Category, Insight } from '@/types';
+import type { Product, Category } from '@/types';
 
 // Both hardsell slides share one accent — the green/blue split this used to
 // have was the only place on the site that broke the monochrome-accent rule.
@@ -32,7 +32,6 @@ interface HomeClientProps {
   categories: Category[];
   freeShipping: boolean;
   hardsellProduct: Product | null;
-  hardsellResearchArticle: Insight | null;
   hardsellHeadline: string;
   hardsellSubheadline: string;
   hardsellSlide2Product: Product | null;
@@ -45,7 +44,6 @@ export function HomeClient({
   categories,
   freeShipping,
   hardsellProduct,
-  hardsellResearchArticle,
   hardsellHeadline,
   hardsellSubheadline,
   hardsellSlide2Product,
@@ -187,16 +185,12 @@ export function HomeClient({
         const slides = [
           hardsellProduct && {
             product: hardsellProduct,
-            researchArticle: hardsellResearchArticle,
             headline: hardsellHeadline,
             subheadline: hardsellSubheadline,
             accent: MONO_ACCENT,
           },
           hardsellSlide2Product && {
             product: hardsellSlide2Product,
-            // No real Insights article for this product yet — pass null
-            // rather than reuse slide 1's (unrelated) research link.
-            researchArticle: null,
             headline: hardsellSlide2Headline,
             subheadline: hardsellSlide2Subheadline,
             accent: MONO_ACCENT,

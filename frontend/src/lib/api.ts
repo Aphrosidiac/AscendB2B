@@ -4,7 +4,6 @@ import type {
   Product,
   Order,
   PaginatedResponse,
-  Insight,
   AdminEmailsResponse,
   CompanyProfile,
   CompanyAddress,
@@ -232,22 +231,6 @@ export const validateDiscount = (token: string, code: string, subtotal: number) 
     { code, subtotal },
     authHeader(token)
   ).then((r) => r.data);
-
-// Insights
-export const adminGetInsights = (token: string, params?: Record<string, string>) =>
-  api.get<PaginatedResponse<Insight>>('/api/v1/admin/insights', { headers: { Authorization: `Bearer ${token}` }, params }).then((r) => r.data);
-
-export const adminGetInsight = (token: string, id: string) =>
-  api.get<Insight>(`/api/v1/admin/insights/${id}`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.data);
-
-export const adminCreateInsight = (token: string, data: Record<string, unknown>) =>
-  api.post('/api/v1/admin/insights', data, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.data);
-
-export const adminUpdateInsight = (token: string, id: string, data: Record<string, unknown>) =>
-  api.patch(`/api/v1/admin/insights/${id}`, data, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.data);
-
-export const adminDeleteInsight = (token: string, id: string) =>
-  api.delete(`/api/v1/admin/insights/${id}`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.data);
 
 // ---------------------------------------------------------------------------
 // Company (B2B) — auth, addresses, orders.
