@@ -153,27 +153,33 @@ export function AddToCartPanel({ variantId, code, name, size, price, imageUrl, s
         {unitPrice !== price && (
           <p className="text-sm text-success font-medium">{formatPrice(unitPrice)}/unit at this quantity</p>
         )}
-        <div className="flex items-center gap-4">
-          <div className="flex items-center border border-border rounded-lg">
-            <button
-              onClick={() => setQuantity((q) => Math.max(moq, q - 1))}
-              disabled={quantity <= moq}
-              className="px-3 py-2 min-w-11 min-h-11 flex items-center justify-center text-text-secondary hover:text-text-primary cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-              aria-label="Decrease quantity"
-            >
-              -
-            </button>
-            <span className="px-4 py-2 font-medium min-w-[3rem] text-center">{quantity}</span>
-            <button
-              onClick={() => setQuantity((q) => Math.min(stock, q + 1))}
-              disabled={quantity >= stock}
-              className="px-3 py-2 min-w-11 min-h-11 flex items-center justify-center text-text-secondary hover:text-text-primary cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-              aria-label="Increase quantity"
-            >
-              +
-            </button>
+        {/* Stacked, not side by side: this panel now sits in a narrow sticky
+            column, where a stepper and a full-size button on one row squeezed
+            "Add to Cart" onto two lines. */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-sm text-text-secondary">Quantity</span>
+            <div className="flex items-center border border-border rounded-lg">
+              <button
+                onClick={() => setQuantity((q) => Math.max(moq, q - 1))}
+                disabled={quantity <= moq}
+                className="px-3 py-2 min-w-11 min-h-11 flex items-center justify-center text-text-secondary hover:text-text-primary cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                aria-label="Decrease quantity"
+              >
+                -
+              </button>
+              <span className="px-3 py-2 font-medium min-w-[3rem] text-center tabular-nums">{quantity}</span>
+              <button
+                onClick={() => setQuantity((q) => Math.min(stock, q + 1))}
+                disabled={quantity >= stock}
+                className="px-3 py-2 min-w-11 min-h-11 flex items-center justify-center text-text-secondary hover:text-text-primary cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                aria-label="Increase quantity"
+              >
+                +
+              </button>
+            </div>
           </div>
-          <Button onClick={handleAddToCart} disabled={stock === 0 || quantity > stock || quantity < moq} size="lg" className="flex-1">
+          <Button onClick={handleAddToCart} disabled={stock === 0 || quantity > stock || quantity < moq} size="lg" className="w-full whitespace-nowrap">
             {added ? (
               <><Check className="w-4 h-4" /> Added</>
             ) : (

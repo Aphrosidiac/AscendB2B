@@ -1,10 +1,9 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { ArrowLeft, ShieldCheck, ExternalLink } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import { getProductServer, getProductsServer, getSettingsServer } from '@/lib/server-api';
-import { getDefaultVariant } from '@/lib/utils';
 import { Animate } from '@/components/ui/Animate';
-import { ProductRail } from '@/components/products/ProductRail';
+import { SkuLinkList } from '@/components/products/SkuLinkList';
 import { ProductReconstitutionSummary } from '@/components/guide/ProductReconstitutionSummary';
 import {
   getRelatedProducts,
@@ -37,61 +36,45 @@ export default async function ProductDetailPage({ params }: Props) {
     if (product.benefits) benefits = JSON.parse(product.benefits);
   } catch {}
 
-  const defaultVariant = getDefaultVariant(product);
-
   return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <Link href="/products" className="inline-flex items-center gap-1 text-sm text-text-secondary hover:text-text-primary mb-8 transition-colors">
         <ArrowLeft className="w-4 h-4" /> Back to Products
       </Link>
 
-      <VariantSwitcher product={product} benefits={benefits} shippingFee={shippingFee} />
+      {/* These per-parent sections are passed as children so they render
+          inside VariantSwitcher's left column — that's what lets the purchase
+          panel stay sticky beside the whole page instead of only beside a
+          short hero. They're still server-rendered here. */}
+      <VariantSwitcher product={product} benefits={benefits} shippingFee={shippingFee}>
+        {product.dosageInfo && (
+          <Animate variant="fadeUp" delay={0.2}>
+            <div className="bg-surface rounded-xl border border-border p-6">
+              <h2 className="font-display font-semibold text-lg mb-2">Research &amp; Reconstitution Information</h2>
+              <p className="text-sm text-text-secondary leading-relaxed whitespace-pre-line">{product.dosageInfo}</p>
+            </div>
+          </Animate>
+        )}
 
-      {/* Dosage / research information */}
-      {product.dosageInfo && (
-        <Animate variant="fadeUp" delay={0.2}>
-          <div className="mt-10 bg-surface rounded-xl border border-border p-6">
-            <h2 className="font-display font-semibold text-lg mb-2">Research &amp; Reconstitution Information</h2>
-            <p className="text-sm text-text-secondary leading-relaxed whitespace-pre-line">{product.dosageInfo}</p>
-          </div>
-        </Animate>
-      )}
+        {/* No Certificate of Analysis block here by design. Product.coaUrl is
+            a single identical link shared by the whole catalogue, so per-product
+            it said nothing — the /coa page still covers testing methodology,
+            and per-batch COAs (which are genuinely per-shipment) stay on the
+            campaign page and the order Files tab. */}
 
-      {/* Certificate of Analysis */}
-      {product.coaUrl && (
-        <Animate variant="fadeUp" delay={0.25}>
-          <div className="mt-6 bg-surface rounded-xl border border-border p-6">
-            <h2 className="font-display font-semibold text-lg mb-2">Certificate of Analysis</h2>
-            <p className="text-sm text-text-secondary mb-4">
-              All products are independently tested by accredited third-party laboratories. Results confirm identity, purity, and potency.
-            </p>
-            <a
-              href={product.coaUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 bg-surface-elevated hover:bg-border rounded-lg px-4 py-2.5 text-sm font-medium transition-colors"
-            >
-              <ShieldCheck className="w-4 h-4" />
-              Batch COA — {product.name}{defaultVariant?.size ? ` ${defaultVariant.size}` : ''}
-              <ExternalLink className="w-3.5 h-3.5 text-text-muted" />
-            </a>
-          </div>
-        </Animate>
-      )}
-
-      {needsReconstitutionGuide(product) && (
-        <Animate variant="fadeUp" delay={0.28}>
+        {needsReconstitutionGuide(product) && (
           <ProductReconstitutionSummary solvent={getRecommendedSolvent(product)} />
-        </Animate>
-      )}
+        )}
+      </VariantSwitcher>
 
-      <ProductRail
+      {/* Cross-sell runs full width below both columns. */}
+      <SkuLinkList
         title="Frequently Paired With"
         products={pairedSupplies}
         delay={0.32}
       />
 
-      <ProductRail
+      <SkuLinkList
         title="Related Products"
         subtitle={`More from ${product.category.name}`}
         products={relatedProducts}
