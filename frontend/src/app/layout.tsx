@@ -20,32 +20,34 @@ const outfit = Outfit({
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://ascendpeptides.my'),
+  // Trade voice, not retail. The previous copy ("#1 Premium Peptides
+  // Malaysia", "trusted source", "Buy ...", "fast shipping", "Number 1
+  // peptides provider") was inherited verbatim from the consumer storefront
+  // and sold to the wrong reader.
   title: {
-    default: 'ASCEND — #1 Premium Peptides Malaysia | Retatrutide, GHK-Cu, BPC-157',
-    template: '%s | ASCEND Peptides Malaysia',
+    default: 'ASCEND Trade Supply — Wholesale Research Peptides, Malaysia',
+    template: '%s | ASCEND Trade Supply',
   },
-  description: 'Malaysia\'s trusted source for premium research peptides. Buy Retatrutide, GHK-Cu, BPC-157, Tesamorelin, MOTS-c and more. Lab-grade quality, fast shipping across Peninsular Malaysia. Number 1 peptides provider in Malaysia.',
+  description: 'Wholesale research peptides for Malaysian clinics, pharmacies and laboratories. Quantity-break pricing, Net 15/30/60 credit terms, per-SKU minimum order quantities and quoted volume. Trade accounts only.',
+  // Trade-intent terms. The retail set ("buy peptides malaysia", "peptide
+  // shop malaysia", "premium peptides") chased consumer searches this site
+  // can't serve — every order here needs an approved trade account.
   keywords: [
-    'peptides malaysia',
-    'buy peptides malaysia',
-    'retatrutide malaysia',
-    'reta malaysia',
-    'reta peptides malaysia',
-    'GHK-Cu malaysia',
-    'BPC-157 malaysia',
-    'tesamorelin malaysia',
-    'MOTS-c malaysia',
-    'research peptides malaysia',
+    'wholesale peptides malaysia',
     'peptide supplier malaysia',
-    'premium peptides',
-    'fat loss peptides malaysia',
-    'anti aging peptides malaysia',
-    'muscle growth peptides',
-    'peptide shop malaysia',
-    'buy reta malaysia',
-    'AOD9604 malaysia',
-    'HGH peptides malaysia',
-    'IGF-1 malaysia',
+    'bulk peptides malaysia',
+    'research peptide distributor malaysia',
+    'peptide trade account malaysia',
+    'peptides for clinics malaysia',
+    'research peptides wholesale',
+    'retatrutide wholesale malaysia',
+    'GHK-Cu bulk malaysia',
+    'BPC-157 wholesale malaysia',
+    'tesamorelin bulk malaysia',
+    'peptide price list malaysia',
+    'net terms peptide supplier',
+    'peptide pre-order malaysia',
+    'laboratory supplies malaysia',
   ],
   authors: [{ name: 'ASCEND' }],
   creator: 'ASCEND',
@@ -65,22 +67,22 @@ export const metadata: Metadata = {
     type: 'website',
     locale: 'en_MY',
     url: 'https://ascendpeptides.my',
-    siteName: 'ASCEND',
-    title: 'ASCEND — #1 Premium Peptides Malaysia',
-    description: 'Malaysia\'s trusted source for premium research peptides. Retatrutide, GHK-Cu, BPC-157 and more. Lab-grade quality with fast shipping across Peninsular Malaysia.',
+    siteName: 'ASCEND Trade Supply',
+    title: 'ASCEND Trade Supply — Wholesale Research Peptides, Malaysia',
+    description: 'Quantity-break pricing, Net 15/30/60 credit terms and quoted volume for Malaysian clinics, pharmacies and research laboratories.',
     images: [
       {
         url: '/images/og-image.png',
         width: 1200,
         height: 630,
-        alt: 'ASCEND — Premium Research Peptides in Malaysia',
+        alt: 'ASCEND Trade Supply — Wholesale Research Peptides in Malaysia',
       },
     ],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'ASCEND — #1 Premium Peptides Malaysia',
-    description: 'Malaysia\'s trusted source for premium research peptides. Lab-grade quality with fast shipping across Peninsular Malaysia.',
+    title: 'ASCEND Trade Supply — Wholesale Research Peptides, Malaysia',
+    description: 'Quantity-break pricing, Net 15/30/60 credit terms and quoted volume for Malaysian clinics, pharmacies and research laboratories.',
     images: ['/images/og-image.png'],
   },
   alternates: {

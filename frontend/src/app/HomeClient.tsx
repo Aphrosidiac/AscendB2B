@@ -1,14 +1,10 @@
 'use client';
 
-import { useCallback } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
 import { ArrowRight, FileText, Layers, FlaskConical, CreditCard, CalendarClock, Package } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { SkuLinkList } from '@/components/products/SkuLinkList';
 import { Animate, Stagger } from '@/components/ui/Animate';
-import { MolecularNetwork } from '@/components/ui/MolecularNetwork';
-import { VideoStrip } from '@/components/ui/VideoStrip';
 import { HardsellCarousel } from '@/components/home/HardsellCarousel';
 import type { HardsellAccent } from '@/components/home/HardsellSlide';
 import { getCategoryIcon } from '@/lib/category-icons';
@@ -33,6 +29,10 @@ interface HomeClientProps {
   // Currently-open pre-order campaigns. Empty is the normal state — the
   // section simply doesn't render rather than showing an empty placeholder.
   openCampaigns: PublicCampaign[];
+  // Real catalogue size for the hero's fact strip — hardcoded numbers rot the
+  // moment a SKU is added.
+  compoundCount: number;
+  skuCount: number;
   freeShipping: boolean;
   hardsellProduct: Product | null;
   hardsellHeadline: string;
@@ -46,6 +46,8 @@ export function HomeClient({
   products,
   categories,
   openCampaigns,
+  compoundCount,
+  skuCount,
   freeShipping,
   hardsellProduct,
   hardsellHeadline,
@@ -54,135 +56,166 @@ export function HomeClient({
   hardsellSlide2Headline,
   hardsellSlide2Subheadline,
 }: HomeClientProps) {
-  const triggerJiggle = useCallback((e: React.MouseEvent | React.TouchEvent) => {
-    const el = e.currentTarget as HTMLElement;
-    if (el.classList.contains('jiggling')) return;
-    el.classList.add('jiggling');
-    el.addEventListener('animationend', () => el.classList.remove('jiggling'), { once: true });
-  }, []);
-
   return (
     <div>
-      {/* Hero */}
-      <section className="bg-primary text-white overflow-hidden relative">
-        <MolecularNetwork className="absolute inset-0 w-full h-full" />
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 md:py-24 relative z-10">
-          <div className="flex flex-col md:flex-row md:items-center gap-8 lg:gap-16">
-            <div className="flex-1 min-w-0">
-              <Animate variant="fade" duration={0.8}>
-                <div className="flex items-center gap-3 mb-6">
-                  <Image src="/images/pill-icon.png" alt="ASCEND" width={48} height={48} className="invert" />
-                  <span className="font-display text-2xl font-bold tracking-tight">ASCEND</span>
-                </div>
-              </Animate>
-              <Animate variant="fadeUp" delay={0.15} duration={0.7}>
-                <h1 className="font-display text-4xl md:text-5xl lg:text-6xl font-bold leading-tight mb-6">
-                  Trade Pricing on Lab-Grade Peptides
-                </h1>
-              </Animate>
-              <Animate variant="fadeUp" delay={0.3} duration={0.7}>
-                <p className="text-lg text-neutral-300 mb-8 max-w-lg">
-                  Bulk pricing, credit terms, and dedicated account support for clinics, pharmacies, and research labs across Malaysia.
-                </p>
-              </Animate>
-              <Animate variant="fadeUp" delay={0.45} duration={0.7} className="hidden md:block">
-                <div className="flex flex-wrap gap-4">
-                  <Link href="/products">
-                    <Button variant="secondary" size="lg">
-                      Browse Products <ArrowRight className="w-4 h-4" />
-                    </Button>
-                  </Link>
-                  <Link
-                    href="/account/quotations"
-                    className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/20 px-6 py-3 text-base font-medium text-white hover:bg-white/10 transition-colors"
-                  >
-                    Request a Quote
-                  </Link>
-                </div>
-              </Animate>
-            </div>
-            <Animate variant="fadeUp" delay={0.3} duration={0.8} className="md:hidden flex flex-col items-center gap-6">
-              <Image
-                src="/images/hero-vials.webp"
-                alt="ASCEND peptide vials"
-                width={300}
-                height={300}
-                className="w-[220px] h-auto drop-shadow-2xl hero-vials"
-                priority
-                onMouseEnter={triggerJiggle}
-                onTouchStart={triggerJiggle}
-              />
-              <div className="flex flex-wrap justify-center gap-4">
-                <Link href="/products">
+      {/* Hero — typographic. The old one led with a vials photo, a molecular
+          network animation and a jiggle-on-hover interaction: consumer
+          storefront furniture that told a trade buyer nothing. */}
+      <section className="bg-primary text-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 md:py-24">
+          <div className="max-w-3xl">
+            <Animate variant="fade" duration={0.8}>
+              <p className="text-xs font-medium uppercase tracking-[0.2em] text-neutral-400 mb-6">
+                ASCEND &middot; Trade Supply
+              </p>
+            </Animate>
+            <Animate variant="fadeUp" delay={0.1} duration={0.7}>
+              <h1 className="font-display text-4xl md:text-5xl lg:text-6xl font-bold leading-[1.05] mb-6">
+                Research peptides,
+                <br />
+                supplied at trade prices
+              </h1>
+            </Animate>
+            <Animate variant="fadeUp" delay={0.2} duration={0.7}>
+              <p className="text-lg text-neutral-300 mb-8 max-w-xl leading-relaxed">
+                Quantity-break pricing, invoiced credit terms and quoted volume for clinics,
+                pharmacies and research laboratories across Malaysia. Approved accounts see unit
+                costs fall as order size rises &mdash; no negotiation needed for standard volume.
+              </p>
+            </Animate>
+
+            {/* Trade account first: for a wholesale buyer, opening the account
+                is the conversion. Browsing the price list is secondary. */}
+            <Animate variant="fadeUp" delay={0.3} duration={0.7}>
+              <div className="flex flex-wrap gap-3">
+                <Link href="/signup">
                   <Button variant="secondary" size="lg">
-                    Browse Products <ArrowRight className="w-4 h-4" />
+                    Apply for a trade account <ArrowRight className="w-4 h-4" />
                   </Button>
                 </Link>
-                <Link href="/account/quotations">
-                  <Button variant="outline" size="lg" className="border-white/20 text-white hover:bg-white/10">
-                    Request a Quote
-                  </Button>
+                <Link
+                  href="/products"
+                  className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/20 px-6 py-3 text-base font-medium text-white hover:bg-white/10 transition-colors"
+                >
+                  View the price list
                 </Link>
               </div>
             </Animate>
-            <Animate variant="fadeRight" delay={0.3} duration={0.8} className="hidden md:block flex-shrink-0">
-              <Image
-                src="/images/hero-vials.webp"
-                alt="ASCEND peptide vials"
-                width={480}
-                height={480}
-                className="w-[340px] lg:w-[440px] h-auto drop-shadow-2xl hero-vials"
-                priority
-                onMouseEnter={triggerJiggle}
-                onTouchStart={triggerJiggle}
-              />
-            </Animate>
           </div>
+
+          {/* Counts come from the live catalogue, not hardcoded copy. */}
+          <Animate variant="fadeUp" delay={0.4} duration={0.7}>
+            <dl className="mt-14 grid grid-cols-2 md:grid-cols-4 gap-6 md:gap-8 border-t border-white/10 pt-8">
+              <div>
+                <dt className="text-xs uppercase tracking-wider text-neutral-500">Compounds</dt>
+                <dd className="font-display text-2xl font-bold mt-1 tabular-nums">{compoundCount}</dd>
+              </div>
+              <div>
+                <dt className="text-xs uppercase tracking-wider text-neutral-500">Stocked SKUs</dt>
+                <dd className="font-display text-2xl font-bold mt-1 tabular-nums">{skuCount}</dd>
+              </div>
+              <div>
+                <dt className="text-xs uppercase tracking-wider text-neutral-500">Credit terms</dt>
+                <dd className="font-display text-2xl font-bold mt-1">Net 15&ndash;60</dd>
+              </div>
+              <div>
+                <dt className="text-xs uppercase tracking-wider text-neutral-500">Delivery</dt>
+                <dd className="font-display text-2xl font-bold mt-1">
+                  {freeShipping ? 'Included' : 'Flat rate'}
+                </dd>
+              </div>
+            </dl>
+          </Animate>
         </div>
       </section>
 
-      {/* Trust Signals */}
-      <section className="border-b border-border">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-          <Stagger className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8" stagger={0.12}>
-            <div className="flex items-start gap-4">
-              <div className="p-3 bg-surface-elevated rounded-lg">
-                <FlaskConical className="w-6 h-6 text-text-primary" />
+      {/* Supply-quality facts only. This was four cards — Lab-Grade Quality,
+          Bulk Pricing, Credit Terms, Quotes on Request — but three of those
+          now restate the how-it-works steps below, so it is trimmed to what
+          those steps don't cover. */}
+      <section className="border-b border-border bg-surface/40">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <Stagger
+            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6"
+            stagger={0.1}
+          >
+            {[
+              { Icon: FlaskConical, label: 'Third-party tested', detail: 'Identity and purity, per batch' },
+              { Icon: Layers, label: '99%+ purity', detail: 'Lab-grade across the catalogue' },
+              { Icon: Package, label: 'Cold-chain aware', detail: 'Temperature-conscious packaging' },
+              { Icon: CreditCard, label: 'MYR invoicing', detail: 'No hidden fees or FX surprises' },
+            ].map(({ Icon, label, detail }) => (
+              <div key={label} className="flex items-start gap-3">
+                <Icon className="w-5 h-5 text-text-muted shrink-0 mt-0.5" />
+                <div className="min-w-0">
+                  <p className="font-display font-semibold text-sm">{label}</p>
+                  <p className="text-sm text-text-secondary">{detail}</p>
+                </div>
               </div>
-              <div>
-                <h3 className="font-display font-semibold mb-1">Lab-Grade Quality</h3>
-                <p className="text-sm text-text-secondary">Third-party tested for identity, purity, and potency.</p>
-              </div>
-            </div>
-            <div className="flex items-start gap-4">
-              <div className="p-3 bg-surface-elevated rounded-lg">
-                <Layers className="w-6 h-6 text-text-primary" />
-              </div>
-              <div>
-                <h3 className="font-display font-semibold mb-1">Bulk Pricing</h3>
-                <p className="text-sm text-text-secondary">Unit price drops automatically as order quantity rises.</p>
-              </div>
-            </div>
-            <div className="flex items-start gap-4">
-              <div className="p-3 bg-surface-elevated rounded-lg">
-                <CreditCard className="w-6 h-6 text-text-primary" />
-              </div>
-              <div>
-                <h3 className="font-display font-semibold mb-1">Credit Terms</h3>
-                <p className="text-sm text-text-secondary">Order on Net 15, 30, or 60 terms and settle by invoice.</p>
-              </div>
-            </div>
-            <div className="flex items-start gap-4">
-              <div className="p-3 bg-surface-elevated rounded-lg">
-                <FileText className="w-6 h-6 text-text-primary" />
-              </div>
-              <div>
-                <h3 className="font-display font-semibold mb-1">Quotes on Request</h3>
-                <p className="text-sm text-text-secondary">Negotiated pricing on volume orders, quoted before you commit.</p>
-              </div>
-            </div>
+            ))}
           </Stagger>
         </div>
+      </section>
+
+      {/* How a trade account works — the page had no account/ordering
+          explanation at all, which is the first thing a wholesale buyer needs
+          and the one thing a retail homepage never has to answer. */}
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+        <Animate variant="fadeUp">
+          <h2 className="font-display text-2xl md:text-3xl font-bold mb-2">
+            How a trade account works
+          </h2>
+          <p className="text-text-secondary mb-8 max-w-2xl">
+            Pricing, terms and stock are all account-based. Retail checkout does not apply here.
+          </p>
+        </Animate>
+        <Stagger className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6" stagger={0.1}>
+          {[
+            {
+              n: '01',
+              title: 'Apply',
+              body: 'Submit your business details. We verify the account before it is opened.',
+            },
+            {
+              n: '02',
+              title: 'Terms set',
+              body: 'Approved accounts are assigned Net 15, 30 or 60 and settle by invoice rather than at checkout.',
+            },
+            {
+              n: '03',
+              title: 'Order at tier price',
+              body: 'Published quantity breaks apply automatically. Minimum order quantities are listed per SKU.',
+            },
+            {
+              n: '04',
+              title: 'Quote for volume',
+              body: 'Beyond the published tiers, request a quote and we price it directly before you commit.',
+            },
+          ].map((step) => (
+            <div key={step.n} className="bg-surface rounded-xl border border-border p-5">
+              <p className="font-display text-sm font-bold text-text-muted tabular-nums mb-3">
+                {step.n}
+              </p>
+              <h3 className="font-display font-semibold mb-1.5">{step.title}</h3>
+              <p className="text-sm text-text-secondary leading-relaxed">{step.body}</p>
+            </div>
+          ))}
+        </Stagger>
+        <Animate variant="fadeUp" delay={0.3}>
+          <div className="mt-6 flex flex-wrap gap-3">
+            <Link href="/signup">
+              <Button size="lg">
+                Apply for a trade account <ArrowRight className="w-4 h-4" />
+              </Button>
+            </Link>
+            <Link
+              href="/account/quotations"
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-border px-6 py-3 text-base font-medium text-text-secondary hover:text-text-primary hover:border-border-hover transition-colors"
+            >
+              <FileText className="w-4 h-4" /> Request a quote
+            </Link>
+          </div>
+        </Animate>
       </section>
 
       {(() => {
@@ -314,8 +347,6 @@ export function HomeClient({
         </section>
       )}
 
-      {/* Video Divider */}
-      <VideoStrip src="/videos/lab-glassware.mp4" height="120px" overlay={0.35} />
 
       {/* Featured Products — a price list, not an image grid, matching
           /products and the product page. */}
@@ -333,8 +364,6 @@ export function HomeClient({
         </section>
       )}
 
-      {/* Video Divider */}
-      <VideoStrip src="/videos/lab-glassware.mp4" height="100px" overlay={0.45} />
 
       {/* SEO content */}
       <section className="border-t border-border bg-surface/40">
@@ -366,6 +395,13 @@ export function HomeClient({
                 Prices are listed in Malaysian Ringgit (MYR) with no hidden fees. Sign in to your business account to{' '}
                 <Link href="/account/orders" className="text-primary-light hover:underline">track orders</Link> and{' '}
                 <Link href="/account/invoices" className="text-primary-light hover:underline">review outstanding invoices</Link>.
+              </p>
+              <p>
+                Ahead of a restock we open{' '}
+                <Link href="/kits" className="text-primary-light hover:underline">pre-order campaigns</Link>{' '}
+                against an incoming batch, with the closing date and estimated arrival published up
+                front. Pre-assembled kits are priced per kit and list exactly which SKUs and
+                quantities they contain.
               </p>
               <p>
                 Not yet set up with us?{' '}

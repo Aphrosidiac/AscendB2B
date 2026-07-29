@@ -8,8 +8,12 @@ import {
 } from '@/lib/server-api';
 
 export default async function HomePage() {
-  const [featuredRes, categories, settings, campaignsRes] = await Promise.all([
+  const [featuredRes, catalogueRes, categories, settings, campaignsRes] = await Promise.all([
     getProductsServer({ featured: true, limit: 8 }),
+    // Fetched unconditionally now: it's both the fallback list when nothing is
+    // flagged featured AND the source of the hero's catalogue counts, which
+    // must be real rather than hardcoded numbers that rot.
+    getProductsServer({ limit: 100 }),
     getCategoriesServer(),
     getSettingsServer(),
     // Only OPEN campaigns come back from this endpoint, so a non-empty list
@@ -17,8 +21,13 @@ export default async function HomePage() {
     getCampaignsServer({ limit: 3 }),
   ]);
 
-  const products =
-    featuredRes.data.length > 0 ? featuredRes.data : (await getProductsServer({ limit: 8 })).data;
+  const products = featuredRes.data.length > 0 ? featuredRes.data : catalogueRes.data.slice(0, 8);
+
+  const compoundCount = catalogueRes.pagination.total;
+  const skuCount = catalogueRes.data.reduce(
+    (sum, p) => sum + p.variants.filter((v) => v.active).length,
+    0
+  );
 
   const shippingFee = settings.shipping_fee || '';
   const freeShipping = !shippingFee || shippingFee === '0';
@@ -38,6 +47,8 @@ export default async function HomePage() {
       products={products}
       categories={categories}
       openCampaigns={campaignsRes.data}
+      compoundCount={compoundCount}
+      skuCount={skuCount}
       freeShipping={freeShipping}
       hardsellProduct={hardsellProduct}
       hardsellHeadline={settings.hardsell_headline || ''}

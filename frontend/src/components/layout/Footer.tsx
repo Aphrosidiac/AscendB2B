@@ -22,7 +22,8 @@ export function Footer() {
             <div className="col-span-2 md:col-span-1">
               <h3 className="font-display font-bold text-lg mb-3">ASCEND</h3>
               <p className="text-sm text-neutral-400 max-w-xs">
-                Malaysia&apos;s trusted source for premium research peptides. 99%+ purity, third-party tested.
+                Wholesale research peptides for Malaysian clinics, pharmacies and laboratories.
+                99%+ purity, third-party tested, supplied on trade terms.
               </p>
             </div>
 

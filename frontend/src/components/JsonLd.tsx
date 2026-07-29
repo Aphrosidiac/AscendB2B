@@ -31,7 +31,7 @@ export function OrganizationJsonLd({ priceRange }: OrganizationJsonLdProps = {})
     url: 'https://ascendpeptides.my',
     logo: 'https://ascendpeptides.my/images/pill-icon-512.png',
     image: 'https://ascendpeptides.my/images/pill-icon-512.png',
-    description: 'Malaysia\'s #1 premium research peptides provider. Lab-grade Retatrutide, GHK-Cu, BPC-157, Tesamorelin and more with fast, free shipping across Peninsular Malaysia.',
+    description: 'Wholesale supplier of research peptides to clinics, pharmacies and laboratories in Malaysia. Quantity-break pricing, Net 15/30/60 credit terms and quoted volume on approved trade accounts.',
     sameAs: [
       'https://www.tiktok.com/@ascendpeptidesmy',
     ],
