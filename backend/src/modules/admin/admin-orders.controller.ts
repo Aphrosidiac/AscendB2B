@@ -41,6 +41,10 @@ export async function adminListOrders(fastify: FastifyInstance, query: Record<st
     where.OR = [
       { orderNumber: { contains: query.search, mode: 'insensitive' } },
       { company: { name: { contains: query.search, mode: 'insensitive' } } },
+      // Signup only collects username/email/password, so a company that hasn't
+      // filled in its business profile yet has a null name — searchable only by
+      // the handle the admin actually sees in the list.
+      { company: { username: { contains: query.search, mode: 'insensitive' } } },
       { company: { contactName: { contains: query.search, mode: 'insensitive' } } },
       { company: { email: { contains: query.search, mode: 'insensitive' } } },
     ];
@@ -51,7 +55,7 @@ export async function adminListOrders(fastify: FastifyInstance, query: Record<st
       where,
       include: {
         items: { include: { variant: { select: { code: true, size: true, product: { select: { name: true } } } }, kit: { select: { name: true } } } },
-        company: { select: { id: true, name: true, contactName: true, email: true, creditTerms: true } },
+        company: { select: { username: true, id: true, name: true, contactName: true, email: true, creditTerms: true } },
         discountCode: { select: { code: true, discountType: true, discountValue: true } },
         emails: EMAIL_STATUS_SELECT,
       },

@@ -10,6 +10,7 @@ import { useCachedFetch } from '@/hooks/useCachedFetch';
 import { adminListShipments } from '@/lib/api';
 import { formatShortDate, cn } from '@/lib/utils';
 import { rowLink } from '@/lib/row-link';
+import { companyLabel } from '@/lib/company';
 import { Badge } from '@/components/ui/Badge';
 import { StatusFilterPills } from '@/components/orders/StatusFilterPills';
 import { FadeSwap } from '@/components/orders/FadeSwap';
@@ -36,7 +37,7 @@ interface ShipmentRow extends Omit<AdminShipment, 'order'> {
     id: string;
     orderNumber: string;
     companyId?: string;
-    company?: { name: string };
+    company?: { username: string; name: string | null };
     shippingAddress?: { label: string; city: string; state: string } | null;
   } | null;
 }
@@ -171,7 +172,7 @@ export default function AdminShipmentsPage() {
                         </td>
                         <td className="px-4 py-3">
                           <p className="font-medium">{shipment.order?.orderNumber ?? '—'}</p>
-                          <p className="text-xs text-text-muted">{shipment.order?.company?.name ?? '—'}</p>
+                          <p className="text-xs text-text-muted">{shipment.order?.company ? companyLabel(shipment.order.company) : '—'}</p>
                         </td>
                         <td className="px-4 py-3 text-text-secondary text-xs">
                           {address ? (

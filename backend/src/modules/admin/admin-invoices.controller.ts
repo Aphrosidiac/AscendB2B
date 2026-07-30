@@ -82,6 +82,9 @@ export async function adminListInvoices(fastify: FastifyInstance, query: Record<
     where.OR = [
       { invoiceNumber: { contains: query.search, mode: 'insensitive' } },
       { company: { name: { contains: query.search, mode: 'insensitive' } } },
+      // A company with no business profile yet has a null name — see the same
+      // clause in admin-orders.controller.ts.
+      { company: { username: { contains: query.search, mode: 'insensitive' } } },
     ];
   }
   // Lets the admin order-detail Invoices tab ask "which invoices touch this
@@ -96,7 +99,7 @@ export async function adminListInvoices(fastify: FastifyInstance, query: Record<
     fastify.prisma.invoice.findMany({
       where,
       include: {
-        company: { select: { id: true, name: true, creditTerms: true } },
+        company: { select: { username: true, id: true, name: true, creditTerms: true } },
         payments: { select: { amount: true } },
         _count: { select: { items: true } },
       },
@@ -165,7 +168,7 @@ export async function adminListUnbilled(fastify: FastifyInstance, query: Record<
             select: {
               id: true,
               orderNumber: true,
-              company: { select: { id: true, name: true, creditTerms: true } },
+              company: { select: { username: true, id: true, name: true, creditTerms: true } },
             },
           },
         },

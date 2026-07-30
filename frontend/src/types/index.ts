@@ -436,7 +436,7 @@ export interface Quotation {
   items: QuotationItem[];
   // Admin list/detail only. The detail endpoint (requireQuotation) also
   // returns contactName/phone; the list endpoint doesn't, hence optional.
-  company?: { id: string; name: string; email: string; contactName?: string; phone?: string };
+  company?: { id: string; username: string; name: string | null; email: string; contactName?: string | null; phone?: string | null };
 }
 
 // ---------------------------------------------------------------------------
@@ -492,7 +492,7 @@ export interface Invoice {
   payments?: InvoicePayment[];
   _count?: { items: number };
   // Admin list/detail only.
-  company?: { id: string; name: string; creditTerms: CreditTerms };
+  company?: { id: string; username: string; name: string | null; creditTerms: CreditTerms };
 }
 
 // Business-wide receivables rollup on the admin invoices list — intentionally
@@ -521,12 +521,12 @@ export interface UnbilledItem {
     id: string;
     shipmentNumber: string;
     shippedAt: string | null;
-    order: { id: string; orderNumber: string; company: { id: string; name: string; creditTerms: CreditTerms } };
+    order: { id: string; orderNumber: string; company: { id: string; username: string; name: string | null; creditTerms: CreditTerms } };
   };
 }
 
 export interface UnbilledCompanyRow {
-  company: { id: string; name: string; creditTerms: CreditTerms };
+  company: { id: string; username: string; name: string | null; creditTerms: CreditTerms };
   itemCount: number;
   orderCount: number;
   amount: number;
@@ -540,7 +540,7 @@ export interface UnbilledCompanyRow {
 // ---------------------------------------------------------------------------
 
 export interface AdminOrder extends CompanyOrder {
-  company: { id: string; name: string; contactName: string; email: string; creditTerms: CreditTerms };
+  company: { id: string; username: string; name: string | null; contactName: string | null; email: string; creditTerms: CreditTerms };
   emails?: OrderEmail[];
 }
 
@@ -564,7 +564,7 @@ export interface AdminShipment {
         id: string;
         orderNumber: string;
         companyId: string;
-        company: { name: string };
+        company: { username: string; name: string | null };
         shippingAddress: { label: string; city: string; state: string } | null;
       }
     | { id: string; orderNumber: string; company: { name: string } };

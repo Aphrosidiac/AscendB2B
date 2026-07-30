@@ -8,6 +8,7 @@ import { adminListQuotations } from '@/lib/api';
 import { formatPrice, formatDate } from '@/lib/utils';
 import { rowLink } from '@/lib/row-link';
 import { QUOTATION_FILTER_OPTIONS, QUOTATION_STATUS_LABELS, QUOTATION_STATUS_COLORS } from '@/lib/constants';
+import { companyLabel } from '@/lib/company';
 import { Badge } from '@/components/ui/Badge';
 import { StatusFilterPills } from '@/components/orders/StatusFilterPills';
 import { FadeSwap } from '@/components/orders/FadeSwap';
@@ -73,7 +74,7 @@ export default function AdminQuotationsPage() {
                         <Link href={`/admin/quotations/${q.id}`} className="font-display font-semibold hover:underline cursor-pointer">{q.quoteNumber}</Link>
                       </td>
                       <td className="px-4 py-3">
-                        <p className="font-medium">{q.company?.name ?? '—'}</p>
+                        <p className="font-medium">{q.company ? companyLabel(q.company) : '—'}</p>
                         <p className="text-xs text-text-muted">{q.company?.email}</p>
                       </td>
                       <td className="px-4 py-3">

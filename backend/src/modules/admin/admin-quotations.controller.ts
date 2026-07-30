@@ -13,7 +13,7 @@ export async function adminListQuotations(fastify: FastifyInstance, query: Recor
   const [quotations, total] = await Promise.all([
     fastify.prisma.quotation.findMany({
       where,
-      include: { items: true, company: { select: { id: true, name: true, email: true } } },
+      include: { items: true, company: { select: { username: true, id: true, name: true, email: true } } },
       orderBy: { createdAt: 'desc' },
       skip,
       take: limit,
@@ -37,7 +37,7 @@ async function requireQuotation(fastify: FastifyInstance, id: string) {
           kit: { select: { name: true } },
         },
       },
-      company: { select: { id: true, name: true, contactName: true, phone: true, email: true } },
+      company: { select: { username: true, id: true, name: true, contactName: true, phone: true, email: true } },
     },
   });
   if (!quotation) throw { statusCode: 404, message: 'Quotation not found' };

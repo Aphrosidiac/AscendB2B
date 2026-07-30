@@ -51,7 +51,7 @@ export async function getDashboardStats(fastify: FastifyInstance) {
       take: 5,
       orderBy: { createdAt: 'desc' },
       include: {
-        company: { select: { name: true } },
+        company: { select: { username: true, name: true } },
         items: { include: { variant: { select: { code: true, size: true, product: { select: { name: true } } } }, kit: { select: { name: true } } } },
       },
     }),

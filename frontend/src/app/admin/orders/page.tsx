@@ -14,6 +14,7 @@ import { Badge } from '@/components/ui/Badge';
 import { StatusFilterPills } from '@/components/orders/StatusFilterPills';
 import { FadeSwap } from '@/components/orders/FadeSwap';
 import { COMPANY_ORDER_FILTER_OPTIONS, COMPANY_ORDER_STATUS_LABELS, COMPANY_ORDER_STATUS_COLORS } from '@/lib/constants';
+import { companyLabel } from '@/lib/company';
 import type { AdminOrder, CompanyOrderStatus } from '@/types';
 
 type FilterValue = CompanyOrderStatus | '';
@@ -103,7 +104,7 @@ export default function AdminOrdersPage() {
                       </Link>
                     </td>
                     <td className="px-4 py-3">
-                      <p className="font-medium">{order.company.name}</p>
+                      <p className="font-medium">{companyLabel(order.company)}</p>
                       <p className="text-xs text-text-muted">{order.company.email}</p>
                     </td>
                     <td className="px-4 py-3 text-text-secondary text-xs">{formatDate(order.createdAt)}</td>

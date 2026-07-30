@@ -3,11 +3,12 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, MapPin, ShoppingBag } from 'lucide-react';
+import { ArrowLeft, MapPin, ShoppingBag, AlertTriangle } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { adminGetCompany, adminUpdateCompany } from '@/lib/api';
 import { formatPrice, formatDate } from '@/lib/utils';
 import { CREDIT_TERMS_LABELS, COMPANY_ORDER_STATUS_LABELS, COMPANY_ORDER_STATUS_COLORS } from '@/lib/constants';
+import { companyLabel, isProfileComplete } from '@/lib/company';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
@@ -62,11 +63,16 @@ export default function AdminCompanyDetailPage() {
     setSaveError('');
     setSaveSuccess(false);
     try {
+      // Every one of these is `z.string().min(1).optional()` server-side, so an
+      // empty string is a validation error, not a no-op. They're all null for
+      // an account that hasn't completed its business profile — sending '' back
+      // made the whole form unsaveable, which meant credit terms could not be
+      // granted to precisely the accounts waiting on approval. Omit instead.
       await adminUpdateCompany(token, company.id, {
-        name,
-        taxId: taxId || null,
-        contactName,
-        phone,
+        name: name.trim() || undefined,
+        taxId: taxId.trim() || null,
+        contactName: contactName.trim() || undefined,
+        phone: phone.trim() || undefined,
         email,
         creditTerms,
       });
@@ -101,8 +107,33 @@ export default function AdminCompanyDetailPage() {
         <ArrowLeft className="w-4 h-4" /> Back to Companies
       </Link>
 
-      <h1 className="font-display text-2xl font-bold mb-1">{company.name ?? company.username}</h1>
-      <p className="text-sm text-text-muted mb-6">Joined {formatDate(company.createdAt)}</p>
+      <h1 className="font-display text-2xl font-bold mb-1">{companyLabel(company)}</h1>
+      <p className="text-sm text-text-muted mb-4">
+        @{company.username} &middot; Joined {formatDate(company.createdAt)}
+      </p>
+
+      {/* Server-side, createOrder and the quote endpoint both call
+          assertProfileComplete — an account missing any of these three is
+          blocked from ordering entirely. Without saying so here, such an
+          account just looks inactive. */}
+      {!isProfileComplete(company) && (
+        <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-4 mb-6">
+          <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+          <div className="text-sm">
+            <p className="font-medium text-amber-900">Business profile incomplete</p>
+            <p className="text-amber-800">
+              Missing{' '}
+              {[
+                !company.name && 'company name',
+                !company.contactName && 'contact name',
+                !company.phone && 'phone',
+              ].filter(Boolean).join(', ')}
+              . This account cannot place orders or request quotes until all three are set — it can
+              fill them in itself from its account page, or you can below.
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="grid md:grid-cols-3 gap-4 mb-8">
         <div className="bg-surface rounded-xl border border-border p-4">
@@ -123,10 +154,15 @@ export default function AdminCompanyDetailPage() {
         <div className="space-y-6">
           <form onSubmit={handleSave} className="bg-surface rounded-xl border border-border p-6 space-y-4">
             <h2 className="font-display font-semibold text-lg">Company Details</h2>
-            <Input label="Name" value={name} onChange={(e) => setName(e.target.value)} required />
+            {/* Not `required`: signup collects none of these, and marking them
+                required blocked the form from submitting at all — including
+                the credit-terms change below — for any account that hadn't
+                filled in its profile yet. The company completes them itself
+                via /account; admin can fill them in on its behalf. */}
+            <Input label="Name" value={name} onChange={(e) => setName(e.target.value)} />
             <Input label="Tax ID (optional)" value={taxId} onChange={(e) => setTaxId(e.target.value)} />
-            <Input label="Contact Name" value={contactName} onChange={(e) => setContactName(e.target.value)} required />
-            <Input label="Phone" value={phone} onChange={(e) => setPhone(e.target.value)} required />
+            <Input label="Contact Name" value={contactName} onChange={(e) => setContactName(e.target.value)} />
+            <Input label="Phone" value={phone} onChange={(e) => setPhone(e.target.value)} />
             <Input label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
             <Select
               label="Credit Terms"

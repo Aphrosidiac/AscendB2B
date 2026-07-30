@@ -26,6 +26,10 @@ export async function adminListCompanies(fastify: FastifyInstance, query: Record
   if (query.search) {
     where.OR = [
       { name: { contains: query.search, mode: 'insensitive' } },
+      // The only label a profile-less company has — without this, an account
+      // that signed up but hasn't filled in its business details is
+      // unfindable in the very list that exists to chase it up.
+      { username: { contains: query.search, mode: 'insensitive' } },
       { email: { contains: query.search, mode: 'insensitive' } },
     ];
   }

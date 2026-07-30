@@ -66,7 +66,7 @@ const ORDER_INCLUDE = {
       kit: { select: { name: true } },
     },
   },
-  company: { select: { name: true, contactName: true, phone: true, email: true, creditTerms: true } },
+  company: { select: { username: true, name: true, contactName: true, phone: true, email: true, creditTerms: true } },
   shippingAddress: { select: { line1: true, line2: true, city: true, state: true, postcode: true } },
   discountCode: { select: { code: true, discountType: true, discountValue: true } },
 } as const;

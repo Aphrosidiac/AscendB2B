@@ -11,6 +11,7 @@ import { adminListInvoices } from '@/lib/api';
 import { formatPrice, formatShortDate } from '@/lib/utils';
 import { rowLink } from '@/lib/row-link';
 import { INVOICE_STATUS_LABELS, INVOICE_STATUS_COLORS } from '@/lib/constants';
+import { companyLabel } from '@/lib/company';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { StatusFilterPills } from '@/components/orders/StatusFilterPills';
@@ -198,7 +199,7 @@ export default function AdminInvoicesPage() {
                           </p>
                         </td>
                         <td className="px-4 py-3">
-                          <p className="font-medium">{invoice.company?.name ?? '—'}</p>
+                          <p className="font-medium">{invoice.company ? companyLabel(invoice.company) : '—'}</p>
                         </td>
                         <td className="px-4 py-3 text-text-secondary text-xs">{formatShortDate(invoice.issueDate)}</td>
                         <td className="px-4 py-3 text-xs">

@@ -47,7 +47,7 @@ export default function AdminCompaniesPage() {
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
         <input
           type="text"
-          placeholder="Search by name or email..."
+          placeholder="Search by name, username or email..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="w-full pl-10 pr-4 py-2 rounded-lg border border-border bg-surface text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
@@ -80,7 +80,16 @@ export default function AdminCompaniesPage() {
                       <Link href={`/admin/companies/${c.id}`} className="font-medium hover:underline cursor-pointer">{c.name ?? c.username}</Link>
                       <p className="text-xs text-text-muted">{c.email}</p>
                     </td>
-                    <td className="px-4 py-3 text-text-secondary text-xs">{c.contactName}<br />{c.phone}</td>
+                    <td className="px-4 py-3 text-text-secondary text-xs">
+                      {/* Both are null until the account completes its business
+                          profile — which is also what blocks it from ordering,
+                          so say that rather than showing an empty cell. */}
+                      {c.contactName || c.phone ? (
+                        <>{c.contactName ?? '—'}<br />{c.phone ?? '—'}</>
+                      ) : (
+                        <span className="text-text-muted italic">Profile incomplete</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-center">
                       <Badge className={c.creditTerms === 'PREPAID' ? 'bg-gray-100 text-gray-800' : 'bg-green-100 text-green-800'}>
                         {CREDIT_TERMS_LABELS[c.creditTerms]}

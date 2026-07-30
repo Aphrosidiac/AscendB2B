@@ -27,6 +27,7 @@ export async function adminListShipments(fastify: FastifyInstance, query: Record
       { trackingNumber: { contains: query.search, mode: 'insensitive' } },
       { order: { orderNumber: { contains: query.search, mode: 'insensitive' } } },
       { order: { company: { name: { contains: query.search, mode: 'insensitive' } } } },
+      { order: { company: { username: { contains: query.search, mode: 'insensitive' } } } },
     ];
   }
 
@@ -39,7 +40,7 @@ export async function adminListShipments(fastify: FastifyInstance, query: Record
             id: true,
             orderNumber: true,
             companyId: true,
-            company: { select: { name: true } },
+            company: { select: { username: true, name: true } },
             shippingAddress: { select: { label: true, city: true, state: true } },
           },
         },
@@ -62,7 +63,7 @@ export async function adminGetShipment(fastify: FastifyInstance, id: string) {
   const shipment = await fastify.prisma.shipment.findUnique({
     where: { id },
     include: {
-      order: { include: { company: { select: { name: true } } } },
+      order: { include: { company: { select: { username: true, name: true } } } },
       items: { include: { batch: true, orderItem: { include: { variant: { include: { product: true } }, kit: true } } } },
     },
   });

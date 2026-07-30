@@ -5,6 +5,7 @@ import { ArrowLeft, Building2, Layers, X } from 'lucide-react';
 import { adminListUnbilled, adminGenerateInvoice } from '@/lib/api';
 import { formatPrice, formatDate } from '@/lib/utils';
 import { CREDIT_TERMS_LABELS } from '@/lib/constants';
+import { companyLabel } from '@/lib/company';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { errorMessage } from './utils';
@@ -116,7 +117,7 @@ export function GenerateInvoiceModal({ token, onClose, onGenerated }: GenerateIn
         <div className="flex items-start justify-between gap-3 p-5 sm:p-6 border-b border-border">
           <div>
             <h3 className="font-display font-semibold text-lg">
-              {picked ? `Bill ${picked.company.name}` : 'Bill a Company'}
+              {picked ? `Bill ${companyLabel(picked.company)}` : 'Bill a Company'}
             </h3>
             <p className="text-xs text-text-muted mt-0.5">
               {picked
@@ -152,7 +153,7 @@ export function GenerateInvoiceModal({ token, onClose, onGenerated }: GenerateIn
                     className="w-full flex items-center justify-between gap-3 text-left px-4 py-3 rounded-lg border border-border hover:border-border-hover hover:bg-surface-elevated transition-colors cursor-pointer"
                   >
                     <div className="min-w-0">
-                      <p className="font-medium text-sm truncate">{row.company.name}</p>
+                      <p className="font-medium text-sm truncate">{companyLabel(row.company)}</p>
                       <p className="text-xs text-text-muted mt-0.5">
                         {row.orderCount} order{row.orderCount !== 1 ? 's' : ''} &middot; {row.itemCount} item{row.itemCount !== 1 ? 's' : ''}
                       </p>
@@ -178,7 +179,7 @@ export function GenerateInvoiceModal({ token, onClose, onGenerated }: GenerateIn
               </div>
             ) : items.length === 0 ? (
               <p className="text-sm text-text-secondary py-8 text-center">
-                Nothing left to bill for {picked.company.name}.
+                Nothing left to bill for {companyLabel(picked.company)}.
               </p>
             ) : (
               <div className="space-y-4">

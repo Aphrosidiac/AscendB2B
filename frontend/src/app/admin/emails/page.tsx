@@ -9,6 +9,7 @@ import { adminGetEmails, adminRetryFailedEmails, adminResendOrderEmail, adminGet
 import { rowLink } from '@/lib/row-link';
 import { formatDate } from '@/lib/utils';
 import { EMAIL_TYPE_LABELS, emailStatusText } from '@/lib/email-status';
+import { companyLabel } from '@/lib/company';
 import { Animate } from '@/components/ui/Animate';
 import type { AdminEmailsResponse, AdminEmailRow } from '@/types';
 
@@ -532,6 +533,8 @@ function TemplatePreview({ token, refreshKey }: { token: string | null; refreshK
   const [type, setType] = useState<'ORDER_CONFIRMATION' | 'PAYMENT_RECEIPT'>('ORDER_CONFIRMATION');
   const [orderId, setOrderId] = useState(''); // '' = latest order
   const [orders, setOrders] = useState<{ id: string; orderNumber: string; companyName: string }[]>([]);
+  // companyName is resolved through companyLabel below, so it's always a
+  // string here even when the company hasn't named itself yet.
   const [preview, setPreview] = useState<{ subject: string; html: string } | null>(null);
   const [previewError, setPreviewError] = useState(false);
 
@@ -542,7 +545,7 @@ function TemplatePreview({ token, refreshKey }: { token: string | null; refreshK
   useEffect(() => {
     if (!token) return;
     adminGetOrders(token, { limit: '20' })
-      .then((r) => setOrders(r.data.map((o) => ({ id: o.id, orderNumber: o.orderNumber, companyName: o.company.name }))))
+      .then((r) => setOrders(r.data.map((o) => ({ id: o.id, orderNumber: o.orderNumber, companyName: companyLabel(o.company) }))))
       .catch(() => {});
   }, [token]);
 

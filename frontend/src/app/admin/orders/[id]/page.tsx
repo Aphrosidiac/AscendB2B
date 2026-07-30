@@ -7,6 +7,7 @@ import { ArrowLeft, FileText, FileDown, MapPin, Building2 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { adminGetOrder, adminUpdateOrder, adminOpenReceiptPdf } from '@/lib/api';
 import { formatPrice, formatDate } from '@/lib/utils';
+import { companyLabel } from '@/lib/company';
 import {
   COMPANY_ORDER_STATUS_LABELS,
   COMPANY_ORDER_STATUS_COLORS,
@@ -152,7 +153,7 @@ export default function AdminOrderDetailPage() {
       <div className="flex flex-wrap items-start justify-between gap-3 mb-6">
         <div>
           <h1 className="font-display text-2xl sm:text-3xl font-bold">{order.orderNumber}</h1>
-          <p className="text-sm text-text-muted mt-1">Placed {formatDate(order.createdAt)} by {order.company.name}</p>
+          <p className="text-sm text-text-muted mt-1">Placed {formatDate(order.createdAt)} by {companyLabel(order.company)}</p>
         </div>
         <Badge className={COMPANY_ORDER_STATUS_COLORS[order.status]}>
           {COMPANY_ORDER_STATUS_LABELS[order.status] ?? order.status}
@@ -175,8 +176,10 @@ export default function AdminOrderDetailPage() {
                 <Building2 className="w-4 h-4 text-text-muted" />
                 <h2 className="font-display font-semibold text-lg">Company</h2>
               </div>
-              <p className="text-sm font-medium">{order.company.name}</p>
-              <p className="text-sm text-text-secondary">{order.company.contactName} &middot; {order.company.email}</p>
+              <p className="text-sm font-medium">{companyLabel(order.company)}</p>
+              <p className="text-sm text-text-secondary">
+                {order.company.contactName ? `${order.company.contactName} · ` : ''}{order.company.email}
+              </p>
               <p className="text-xs text-text-muted mt-1">Credit Terms: {CREDIT_TERMS_LABELS[order.company.creditTerms]}</p>
             </div>
 

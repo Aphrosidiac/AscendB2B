@@ -8,6 +8,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { adminGetInvoice, adminGetOrder, adminRecordPayment, adminVoidInvoice } from '@/lib/api';
 import { formatPrice, formatDate, formatShortDate } from '@/lib/utils';
 import { INVOICE_STATUS_LABELS, INVOICE_STATUS_COLORS, CREDIT_TERMS_LABELS } from '@/lib/constants';
+import { companyLabel } from '@/lib/company';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { errorMessage, overdueLabel, PAYMENT_METHOD_LABELS } from '../utils';
@@ -240,7 +241,7 @@ export default function AdminInvoiceDetailPage() {
             {invoice.company ? (
               <>
                 <Link href={`/admin/companies/${invoice.company.id}`} className="text-sm font-medium hover:underline cursor-pointer">
-                  {invoice.company.name}
+                  {companyLabel(invoice.company)}
                 </Link>
                 <p className="text-xs text-text-muted mt-1">
                   Credit Terms: {CREDIT_TERMS_LABELS[invoice.company.creditTerms]}
