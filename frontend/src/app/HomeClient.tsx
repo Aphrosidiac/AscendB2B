@@ -4,12 +4,12 @@ import Link from 'next/link';
 import { ArrowRight, FileText, Layers, FlaskConical, CreditCard, CalendarClock, Package } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { SkuLinkList } from '@/components/products/SkuLinkList';
+import { PriceLadder } from '@/components/ui/PriceLadder';
 import { formatPrice } from '@/lib/utils';
 import { Animate, Stagger } from '@/components/ui/Animate';
 import { HardsellCarousel } from '@/components/home/HardsellCarousel';
 import type { HardsellAccent } from '@/components/home/HardsellSlide';
-import { getCategoryIcon } from '@/lib/category-icons';
-import type { Product, Category, PublicCampaign, HeroPriceExample } from '@/types';
+import type { Product, PublicCampaign, HeroPriceExample } from '@/types';
 
 // Both hardsell slides share one accent — the green/blue split this used to
 // have was the only place on the site that broke the monochrome-accent rule.
@@ -26,7 +26,6 @@ const MONO_ACCENT: HardsellAccent = {
 
 interface HomeClientProps {
   products: Product[];
-  categories: Category[];
   // Currently-open pre-order campaigns. Empty is the normal state — the
   // section simply doesn't render rather than showing an empty placeholder.
   openCampaigns: PublicCampaign[];
@@ -48,7 +47,6 @@ interface HomeClientProps {
 
 export function HomeClient({
   products,
-  categories,
   openCampaigns,
   compoundCount,
   skuCount,
@@ -63,11 +61,17 @@ export function HomeClient({
 }: HomeClientProps) {
   return (
     <div>
-      {/* Hero — typographic. The old one led with a vials photo, a molecular
-          network animation and a jiggle-on-hover interaction: consumer
-          storefront furniture that told a trade buyer nothing. */}
-      <section className="bg-primary text-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 md:py-24">
+      {/* Hero — typographic, with its own ambient motion. Deliberately NOT the
+          molecular particle network: that's the retail site's signature (and
+          this site's auth gateways), and reusing it made the trade homepage
+          read as a reskin. PriceLadder draws drifting quantity-break
+          staircases instead — the shape of a unit price stepping down as
+          volume rises, which is this site's actual proposition and rhymes with
+          the tier card beside it. Masked at top and bottom so ladders fade in
+          and out rather than clipping at the section edge. */}
+      <section className="bg-primary text-white relative overflow-hidden">
+        <PriceLadder className="absolute inset-0 w-full h-full [mask-image:linear-gradient(to_bottom,transparent,black_18%,black_82%,transparent)]" />
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 md:py-24 relative z-10">
           <div className="grid lg:grid-cols-[minmax(0,1fr)_360px] gap-12 lg:gap-16 items-start">
             <div>
               <Animate variant="fade" duration={0.8}>
@@ -117,7 +121,7 @@ export function HomeClient({
               <Animate variant="fadeUp" delay={0.35} duration={0.8}>
                 <Link
                   href={`/products/${priceExample.slug}`}
-                  className="group block rounded-xl border border-white/15 bg-white/[0.04] p-5 hover:border-white/30 transition-colors"
+                  className="group block rounded-xl border border-white/15 bg-white/[0.05] backdrop-blur-sm p-5 hover:border-white/30 transition-colors"
                 >
                   <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-neutral-500 mb-4">
                     Volume pricing, live example
@@ -397,35 +401,6 @@ export function HomeClient({
           </Stagger>
         </section>
       )}
-
-      {/* Categories */}
-      {categories.length > 0 && (
-        <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-          <Animate variant="fadeUp">
-            <h2 className="font-display text-2xl md:text-3xl font-bold mb-8">Shop by Category</h2>
-          </Animate>
-          <Stagger className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" stagger={0.08}>
-            {categories.filter(c => c.slug !== 'supplies').map((cat) => {
-              const CategoryIcon = getCategoryIcon(cat.slug);
-              return (
-                <Link
-                  key={cat.slug}
-                  href={`/products?category=${cat.slug}`}
-                  className="group bg-surface rounded-xl border border-border hover:border-border-hover hover:shadow-md transition-all duration-300 p-6"
-                >
-                  <div className="flex items-center gap-2 mb-1">
-                    <CategoryIcon className="w-5 h-5 text-text-primary shrink-0" />
-                    <h3 className="font-display font-semibold text-lg group-hover:text-primary-light transition-colors">{cat.name}</h3>
-                  </div>
-                  <p className="text-sm text-text-secondary mb-3">{cat.description}</p>
-                  <span className="text-sm font-medium text-text-muted">{cat.productCount} products</span>
-                </Link>
-              );
-            })}
-          </Stagger>
-        </section>
-      )}
-
 
       {/* Featured Products — a price list, not an image grid, matching
           /products and the product page. */}

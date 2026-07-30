@@ -1,7 +1,6 @@
 import { HomeClient } from './HomeClient';
 import {
   getProductsServer,
-  getCategoriesServer,
   getSettingsServer,
   getProductServer,
   getCampaignsServer,
@@ -15,8 +14,8 @@ import type { Product, HeroPriceExample } from '@/types';
  * it re-picks itself as pricing changes rather than naming a product in copy.
  *
  * Supplies (bac water, acetic acid) are excluded even when they discount
- * hardest: the hero should lead with a compound, and the homepage's category
- * grid already hides that category for the same reason.
+ * hardest — AA10 is the deepest in the catalogue at 36% — because the hero
+ * should lead with a compound, not a consumable.
  */
 function pickPriceExample(products: Product[]): HeroPriceExample | null {
   let best: HeroPriceExample | null = null;
@@ -52,13 +51,12 @@ function pickPriceExample(products: Product[]): HeroPriceExample | null {
 }
 
 export default async function HomePage() {
-  const [featuredRes, catalogueRes, categories, settings, campaignsRes] = await Promise.all([
+  const [featuredRes, catalogueRes, settings, campaignsRes] = await Promise.all([
     getProductsServer({ featured: true, limit: 8 }),
     // Fetched unconditionally now: it's both the fallback list when nothing is
     // flagged featured AND the source of the hero's catalogue counts, which
     // must be real rather than hardcoded numbers that rot.
     getProductsServer({ limit: 100 }),
-    getCategoriesServer(),
     getSettingsServer(),
     // Only OPEN campaigns come back from this endpoint, so a non-empty list
     // means there is genuinely something a buyer can pre-order right now.
@@ -89,7 +87,6 @@ export default async function HomePage() {
   return (
     <HomeClient
       products={products}
-      categories={categories}
       openCampaigns={campaignsRes.data}
       compoundCount={compoundCount}
       skuCount={skuCount}
