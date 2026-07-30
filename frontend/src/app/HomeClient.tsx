@@ -4,11 +4,12 @@ import Link from 'next/link';
 import { ArrowRight, FileText, Layers, FlaskConical, CreditCard, CalendarClock, Package } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { SkuLinkList } from '@/components/products/SkuLinkList';
+import { formatPrice } from '@/lib/utils';
 import { Animate, Stagger } from '@/components/ui/Animate';
 import { HardsellCarousel } from '@/components/home/HardsellCarousel';
 import type { HardsellAccent } from '@/components/home/HardsellSlide';
 import { getCategoryIcon } from '@/lib/category-icons';
-import type { Product, Category, PublicCampaign } from '@/types';
+import type { Product, Category, PublicCampaign, HeroPriceExample } from '@/types';
 
 // Both hardsell slides share one accent — the green/blue split this used to
 // have was the only place on the site that broke the monochrome-accent rule.
@@ -33,6 +34,9 @@ interface HomeClientProps {
   // moment a SKU is added.
   compoundCount: number;
   skuCount: number;
+  // Whichever live SKU discounts hardest, for the hero's pricing demo. Null
+  // when nothing in the catalogue has quantity breaks configured yet.
+  priceExample: HeroPriceExample | null;
   freeShipping: boolean;
   hardsellProduct: Product | null;
   hardsellHeadline: string;
@@ -48,6 +52,7 @@ export function HomeClient({
   openCampaigns,
   compoundCount,
   skuCount,
+  priceExample,
   freeShipping,
   hardsellProduct,
   hardsellHeadline,
@@ -63,44 +68,118 @@ export function HomeClient({
           storefront furniture that told a trade buyer nothing. */}
       <section className="bg-primary text-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 md:py-24">
-          <div className="max-w-3xl">
-            <Animate variant="fade" duration={0.8}>
-              <p className="text-xs font-medium uppercase tracking-[0.2em] text-neutral-400 mb-6">
-                ASCEND &middot; Trade Supply
-              </p>
-            </Animate>
-            <Animate variant="fadeUp" delay={0.1} duration={0.7}>
-              <h1 className="font-display text-4xl md:text-5xl lg:text-6xl font-bold leading-[1.05] mb-6">
-                Research peptides,
-                <br />
-                supplied at trade prices
-              </h1>
-            </Animate>
-            <Animate variant="fadeUp" delay={0.2} duration={0.7}>
-              <p className="text-lg text-neutral-300 mb-8 max-w-xl leading-relaxed">
-                Quantity-break pricing, invoiced credit terms and quoted volume for clinics,
-                pharmacies and research laboratories across Malaysia. Approved accounts see unit
-                costs fall as order size rises &mdash; no negotiation needed for standard volume.
-              </p>
-            </Animate>
+          <div className="grid lg:grid-cols-[minmax(0,1fr)_360px] gap-12 lg:gap-16 items-start">
+            <div>
+              <Animate variant="fade" duration={0.8}>
+                <p className="text-xs font-medium uppercase tracking-[0.2em] text-neutral-400 mb-6">
+                  ASCEND &middot; Trade Supply
+                </p>
+              </Animate>
+              <Animate variant="fadeUp" delay={0.1} duration={0.7}>
+                <h1 className="font-display text-4xl md:text-5xl lg:text-6xl font-bold leading-[1.05] mb-6">
+                  Research peptides,
+                  <br />
+                  supplied at trade prices
+                </h1>
+              </Animate>
+              <Animate variant="fadeUp" delay={0.2} duration={0.7}>
+                <p className="text-lg text-neutral-300 mb-8 max-w-xl leading-relaxed">
+                  Quantity-break pricing, invoiced credit terms and quoted volume for clinics,
+                  pharmacies and research laboratories across Malaysia. Approved accounts see unit
+                  costs fall as order size rises &mdash; no negotiation needed for standard volume.
+                </p>
+              </Animate>
 
-            {/* Trade account first: for a wholesale buyer, opening the account
-                is the conversion. Browsing the price list is secondary. */}
-            <Animate variant="fadeUp" delay={0.3} duration={0.7}>
-              <div className="flex flex-wrap gap-3">
-                <Link href="/signup">
-                  <Button variant="secondary" size="lg">
-                    Apply for a trade account <ArrowRight className="w-4 h-4" />
-                  </Button>
-                </Link>
+              {/* Trade account first: for a wholesale buyer, opening the account
+                  is the conversion. Browsing the price list is secondary. */}
+              <Animate variant="fadeUp" delay={0.3} duration={0.7}>
+                <div className="flex flex-wrap gap-3">
+                  <Link href="/signup">
+                    <Button variant="secondary" size="lg">
+                      Apply for a trade account <ArrowRight className="w-4 h-4" />
+                    </Button>
+                  </Link>
+                  <Link
+                    href="/products"
+                    className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/20 px-6 py-3 text-base font-medium text-white hover:bg-white/10 transition-colors"
+                  >
+                    View the price list
+                  </Link>
+                </div>
+              </Animate>
+            </div>
+
+            {/* Right column: a live demonstration of the one thing that makes
+                this a trade site — unit cost falling with volume. Real SKU,
+                real tiers, picked server-side, so it can't drift from what
+                /products actually charges. */}
+            {priceExample && (
+              <Animate variant="fadeUp" delay={0.35} duration={0.8}>
                 <Link
-                  href="/products"
-                  className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/20 px-6 py-3 text-base font-medium text-white hover:bg-white/10 transition-colors"
+                  href={`/products/${priceExample.slug}`}
+                  className="group block rounded-xl border border-white/15 bg-white/[0.04] p-5 hover:border-white/30 transition-colors"
                 >
-                  View the price list
+                  <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-neutral-500 mb-4">
+                    Volume pricing, live example
+                  </p>
+
+                  <div className="mb-4">
+                    <p className="font-display text-xl font-bold tracking-wide group-hover:text-white transition-colors">
+                      {priceExample.code}
+                    </p>
+                    <p className="text-sm text-neutral-400">{priceExample.name}</p>
+                  </div>
+
+                  <dl className="space-y-1">
+                    {priceExample.tiers[0].minQty > 1 && (
+                      <div className="flex items-baseline justify-between gap-4 px-3 py-2 rounded-lg">
+                        <dt className="text-sm text-neutral-400 tabular-nums">
+                          1&ndash;{priceExample.tiers[0].minQty - 1}
+                        </dt>
+                        <dd className="text-sm tabular-nums text-neutral-300">
+                          {formatPrice(priceExample.basePrice)}
+                        </dd>
+                      </div>
+                    )}
+                    {priceExample.tiers.map((tier, i) => {
+                      const next = priceExample.tiers[i + 1];
+                      const isBest = !next;
+                      return (
+                        <div
+                          key={tier.minQty}
+                          className={`flex items-baseline justify-between gap-4 px-3 py-2 rounded-lg ${
+                            isBest ? 'bg-white text-primary' : ''
+                          }`}
+                        >
+                          <dt
+                            className={`text-sm tabular-nums ${
+                              isBest ? 'font-semibold' : 'text-neutral-400'
+                            }`}
+                          >
+                            {tier.minQty}
+                            {next ? `\u2013${next.minQty - 1}` : '+'}
+                          </dt>
+                          <dd
+                            className={`tabular-nums ${
+                              isBest ? 'font-display font-bold' : 'text-sm text-neutral-300'
+                            }`}
+                          >
+                            {formatPrice(tier.unitPrice)}
+                          </dd>
+                        </div>
+                      );
+                    })}
+                  </dl>
+
+                  <p className="mt-4 pt-4 border-t border-white/10 text-sm text-neutral-400">
+                    <span className="text-white font-medium">
+                      {priceExample.savingPct}% lower per unit
+                    </span>{' '}
+                    at {priceExample.bestMinQty}+
+                  </p>
                 </Link>
-              </div>
-            </Animate>
+              </Animate>
+            )}
           </div>
 
           {/* Counts come from the live catalogue, not hardcoded copy. */}

@@ -6,6 +6,50 @@ import {
   getProductServer,
   getCampaignsServer,
 } from '@/lib/server-api';
+import { getEffectivePrice } from '@/lib/utils';
+import type { Product, HeroPriceExample } from '@/types';
+
+/**
+ * Picks the SKU whose published quantity breaks show the deepest per-unit
+ * saving — that's the most honest demonstration of the trade proposition, and
+ * it re-picks itself as pricing changes rather than naming a product in copy.
+ *
+ * Supplies (bac water, acetic acid) are excluded even when they discount
+ * hardest: the hero should lead with a compound, and the homepage's category
+ * grid already hides that category for the same reason.
+ */
+function pickPriceExample(products: Product[]): HeroPriceExample | null {
+  let best: HeroPriceExample | null = null;
+
+  for (const product of products) {
+    if (product.category?.slug === 'supplies') continue;
+
+    for (const variant of product.variants) {
+      if (!variant.active || !variant.priceTiers?.length) continue;
+
+      const basePrice = getEffectivePrice(variant);
+      const cheapest = variant.priceTiers.reduce((lo, t) => (t.unitPrice < lo.unitPrice ? t : lo));
+      if (cheapest.unitPrice >= basePrice) continue;
+
+      const savingPct = Math.round(((basePrice - cheapest.unitPrice) / basePrice) * 100);
+      if (best && savingPct <= best.savingPct) continue;
+
+      best = {
+        slug: product.slug,
+        code: variant.code,
+        name: variant.size ? `${product.name} ${variant.size}` : product.name,
+        basePrice,
+        savingPct,
+        bestMinQty: cheapest.minQty,
+        tiers: [...variant.priceTiers]
+          .sort((a, b) => a.minQty - b.minQty)
+          .map((t) => ({ minQty: t.minQty, unitPrice: t.unitPrice })),
+      };
+    }
+  }
+
+  return best;
+}
 
 export default async function HomePage() {
   const [featuredRes, catalogueRes, categories, settings, campaignsRes] = await Promise.all([
@@ -49,6 +93,7 @@ export default async function HomePage() {
       openCampaigns={campaignsRes.data}
       compoundCount={compoundCount}
       skuCount={skuCount}
+      priceExample={pickPriceExample(catalogueRes.data)}
       freeShipping={freeShipping}
       hardsellProduct={hardsellProduct}
       hardsellHeadline={settings.hardsell_headline || ''}

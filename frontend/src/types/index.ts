@@ -102,6 +102,21 @@ export interface AddOnVariant {
 // XOR convention the backend enforces on OrderItem/QuotationItem. Use
 // cartLineKey() (lib/cart.tsx) to identify a line rather than reaching for
 // variantId, which is absent on kit lines.
+// One SKU's quantity-break ladder, flattened for the homepage hero's pricing
+// demonstration. Chosen server-side (see pickPriceExample in app/page.tsx) as
+// whichever live SKU discounts hardest, so it never hardcodes a product.
+export interface HeroPriceExample {
+  slug: string;
+  code: string;
+  /** Product name with size appended, e.g. "Tesamorelin 10mg". */
+  name: string;
+  /** Unit price below the first tier (sale-adjusted). */
+  basePrice: number;
+  savingPct: number;
+  bestMinQty: number;
+  tiers: { minQty: number; unitPrice: number }[];
+}
+
 export interface CartItem {
   variantId?: string;
   // Set instead of variantId when this line is a kit. Kits are priced flat at
