@@ -3,9 +3,15 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, FileText, FileDown, Truck, MapPin } from 'lucide-react';
+import { ArrowLeft, FileText, FileDown, Receipt, Truck, MapPin } from 'lucide-react';
 import { useCompanyAuth } from '@/hooks/useCompanyAuth';
-import { getCompanyOrder, listCompanyInvoices, companyOpenReceiptPdf } from '@/lib/api';
+import {
+  getCompanyOrder,
+  listCompanyInvoices,
+  companyOpenReceiptPdf,
+  companyOpenInvoicePdf,
+  companyOpenQuotationPdf,
+} from '@/lib/api';
 import { formatPrice, formatDate } from '@/lib/utils';
 import {
   COMPANY_ORDER_STATUS_LABELS,
@@ -268,35 +274,119 @@ export default function OrderDetailPage() {
           </div>
         )}
 
+        {/* Every document this order produced, in one place. Previously this
+            tab only listed batch COAs, so the receipt was buried on the Order
+            Info tab, invoices could only be downloaded by navigating away to
+            /account/invoices, and the quotation an order was priced by wasn't
+            reachable from the order at all. */}
         {tab === 'files' && (
-          <div className="space-y-3">
-            {coaBatches.size === 0 ? (
-              <div className="text-center py-12 bg-surface rounded-xl border border-border border-dashed">
-                <FileText className="w-10 h-10 text-text-muted mx-auto mb-3" />
-                <p className="text-text-secondary">No Certificates of Analysis are available yet — these appear once your order has shipped.</p>
-              </div>
-            ) : (
-              [...coaBatches.values()].map((batch) => (
-                <a
-                  key={batch.batchNumber}
-                  href={batch.coaUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center justify-between gap-3 bg-surface rounded-xl border border-border p-4 sm:p-5 hover:border-border-hover transition-colors"
+          <div className="space-y-6">
+            <section className="space-y-3">
+              <h2 className="font-display font-semibold text-sm text-text-secondary">
+                Order documents
+              </h2>
+
+              <button
+                type="button"
+                onClick={() => token && companyOpenReceiptPdf(token, order.id)}
+                className="w-full flex items-center justify-between gap-3 bg-surface rounded-xl border border-border p-4 sm:p-5 hover:border-border-hover transition-colors cursor-pointer text-left"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-9 h-9 rounded-lg bg-surface-elevated flex items-center justify-center shrink-0">
+                    <Receipt className="w-4 h-4 text-text-muted" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium truncate">Order receipt</p>
+                    <p className="text-xs text-text-muted">{order.orderNumber}</p>
+                  </div>
+                </div>
+                <span className="text-xs font-medium text-text-secondary shrink-0">Download</span>
+              </button>
+
+              {order.quotation && (
+                <button
+                  type="button"
+                  onClick={() => token && companyOpenQuotationPdf(token, order.quotation!.id)}
+                  className="w-full flex items-center justify-between gap-3 bg-surface rounded-xl border border-border p-4 sm:p-5 hover:border-border-hover transition-colors cursor-pointer text-left"
                 >
                   <div className="flex items-center gap-3 min-w-0">
                     <div className="w-9 h-9 rounded-lg bg-surface-elevated flex items-center justify-center shrink-0">
                       <FileText className="w-4 h-4 text-text-muted" />
                     </div>
                     <div className="min-w-0">
-                      <p className="text-sm font-medium truncate">Certificate of Analysis</p>
-                      <p className="text-xs text-text-muted">Batch {batch.batchNumber} &middot; Exp {formatDate(batch.expiry)}</p>
+                      <p className="text-sm font-medium truncate">Quotation</p>
+                      <p className="text-xs text-text-muted">
+                        {order.quotation.quoteNumber} &middot; the quote this order was priced by
+                      </p>
                     </div>
                   </div>
-                  <span className="text-xs font-medium text-text-secondary shrink-0">View</span>
-                </a>
-              ))
-            )}
+                  <span className="text-xs font-medium text-text-secondary shrink-0">Download</span>
+                </button>
+              )}
+
+              {invoices.map((invoice) => (
+                <button
+                  key={invoice.id}
+                  type="button"
+                  onClick={() => token && companyOpenInvoicePdf(token, invoice.id)}
+                  className="w-full flex items-center justify-between gap-3 bg-surface rounded-xl border border-border p-4 sm:p-5 hover:border-border-hover transition-colors cursor-pointer text-left"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-9 h-9 rounded-lg bg-surface-elevated flex items-center justify-center shrink-0">
+                      <Receipt className="w-4 h-4 text-text-muted" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">Invoice</p>
+                      <p className="text-xs text-text-muted">
+                        {invoice.invoiceNumber} &middot; {formatPrice(invoice.total)} &middot; due{' '}
+                        {formatDate(invoice.dueDate)}
+                      </p>
+                    </div>
+                  </div>
+                  <span className="text-xs font-medium text-text-secondary shrink-0">Download</span>
+                </button>
+              ))}
+
+              {!invoicesLoading && invoices.length === 0 && (
+                <p className="text-sm text-text-muted">
+                  No invoice yet — one is issued when the order ships.
+                </p>
+              )}
+            </section>
+
+            <section className="space-y-3">
+              <h2 className="font-display font-semibold text-sm text-text-secondary">
+                Certificates of Analysis
+              </h2>
+              {coaBatches.size === 0 ? (
+                <p className="text-sm text-text-muted">
+                  None available yet — these appear once your order has shipped.
+                </p>
+              ) : (
+                [...coaBatches.values()].map((batch) => (
+                  <a
+                    key={batch.batchNumber}
+                    href={batch.coaUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-between gap-3 bg-surface rounded-xl border border-border p-4 sm:p-5 hover:border-border-hover transition-colors"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-9 h-9 rounded-lg bg-surface-elevated flex items-center justify-center shrink-0">
+                        <FileText className="w-4 h-4 text-text-muted" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate">Certificate of Analysis</p>
+                        <p className="text-xs text-text-muted">
+                          Batch {batch.batchNumber} &middot; Exp {formatDate(batch.expiry)}
+                        </p>
+                      </div>
+                    </div>
+                    <span className="text-xs font-medium text-text-secondary shrink-0">View</span>
+                  </a>
+                ))
+              )}
+            </section>
           </div>
         )}
 

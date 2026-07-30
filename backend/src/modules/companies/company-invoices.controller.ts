@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { getPaginationParams, paginatedResponse } from '../../utils/pagination.js';
 import { computeInvoiceStatus, invoiceIdsMatchingStatus, outstandingSummary } from '../admin/admin-invoices.controller.js';
+import { generateInvoicePdf } from '../../utils/invoice-pdf.js';
 
 // Company-scoped mirror of admin-invoices.controller.ts's list/get — a
 // company can only ever see its own invoices, and paid/void/overdue status is
@@ -48,6 +49,29 @@ export async function listMyInvoices(fastify: FastifyInstance, companyId: string
   // Account-wide, deliberately not scoped to the current filter/page — "what
   // I owe" has to be the real balance, not a subtotal of what's on screen.
   return { ...paginatedResponse(withStatus, total, page, limit), summary: await outstandingSummary(fastify, companyId) };
+}
+
+/**
+ * The same invoice, rendered as a PDF. Reuses getMyInvoice's ownership check
+ * rather than re-querying — a company must not be able to pull another
+ * company's invoice by guessing an id.
+ */
+export async function getMyInvoicePdf(fastify: FastifyInstance, companyId: string, id: string) {
+  const invoice = await getMyInvoice(fastify, companyId, id);
+
+  const company = await fastify.prisma.company.findUnique({
+    where: { id: companyId },
+    select: { name: true, contactName: true, phone: true, email: true, creditTerms: true },
+  });
+  if (!company) {
+    throw { statusCode: 404, message: 'Company not found' };
+  }
+
+  const settingsRows = await fastify.prisma.setting.findMany();
+  const settings = Object.fromEntries(settingsRows.map((row) => [row.key, row.value]));
+
+  const pdf = await generateInvoicePdf({ ...invoice, company }, settings);
+  return { invoice, pdf };
 }
 
 export async function getMyInvoice(fastify: FastifyInstance, companyId: string, id: string) {

@@ -313,6 +313,19 @@ export const companyOpenReceiptPdf = (token: string, orderId: string) =>
     setTimeout(() => URL.revokeObjectURL(url), 60_000);
   });
 
+// Same blob-download pattern as the receipt/quotation PDFs — an invoice is
+// the document a buyer forwards to their finance team, so it has to leave the
+// app as a file.
+export const companyOpenInvoicePdf = (token: string, invoiceId: string) =>
+  api.get<Blob>(`/api/v1/companies/invoices/${invoiceId}/pdf`, {
+    ...authHeader(token),
+    responseType: 'blob',
+  }).then((r) => {
+    const url = URL.createObjectURL(r.data);
+    window.open(url, '_blank', 'noopener,noreferrer');
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  });
+
 // ---------------------------------------------------------------------------
 // Company (B2B) — quotations.
 // See backend/src/modules/quotations/quotations.controller.ts.

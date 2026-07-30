@@ -392,6 +392,11 @@ export async function getMyOrder(fastify: FastifyInstance, companyId: string, id
         },
       },
       statusHistory: { orderBy: { changedAt: 'asc' } },
+      // The quote this order came from, if any. Order.quotationId already
+      // existed and is @unique, but nothing ever read it back — so an order
+      // converted from a quotation had no way to show or link the quotation
+      // it was priced by.
+      quotation: { select: { id: true, quoteNumber: true, status: true, validUntil: true } },
     },
   });
   // Same as everywhere else a company can look up its own resource: 404 (not

@@ -321,6 +321,15 @@ export interface CompanyOrderItem {
   kit?: { name: string } | null;
 }
 
+// The quote an order was converted from, present only on the order-detail
+// response (getMyOrder) and only when the order actually came from one.
+export interface CompanyOrderQuotationRef {
+  id: string;
+  quoteNumber: string;
+  status: QuotationStatus;
+  validUntil: string;
+}
+
 export interface CompanyOrderStatusHistoryEntry {
   id: string;
   orderId: string;
@@ -385,6 +394,8 @@ export interface CompanyOrder {
   discountCode?: { code: string; discountType: string; discountValue: number } | null;
   shipments?: CompanyOrderShipment[];
   statusHistory?: CompanyOrderStatusHistoryEntry[];
+  // Detail endpoint only, and only when this order came from a quote.
+  quotation?: CompanyOrderQuotationRef | null;
 }
 
 // ---------------------------------------------------------------------------
