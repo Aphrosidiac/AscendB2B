@@ -141,6 +141,11 @@ export default function CheckoutPage() {
     setDiscountError('');
   };
 
+  // Credit is approval-gated: everyone signs up PREPAID and an admin raising
+  // creditTerms off PREPAID is the approval. Enforced server-side too — this
+  // only stops the buyer picking an option the order endpoint would reject.
+  const canBillLater = Boolean(company && company.creditTerms !== 'PREPAID');
+
   const discountAmount = appliedDiscount?.discountAmount ?? 0;
   const shippingParsed = parseFloat(shippingFee);
   const shippingInSen = Number.isFinite(shippingParsed) && shippingParsed > 0 ? Math.round(shippingParsed * 100) : 0;
@@ -314,21 +319,37 @@ export default function CheckoutPage() {
               <div className="grid sm:grid-cols-2 gap-3">
                 <button
                   type="button"
-                  onClick={() => setPayNow(false)}
+                  onClick={() => canBillLater && setPayNow(false)}
+                  disabled={!canBillLater}
+                  aria-disabled={!canBillLater}
                   className={cn(
-                    'p-4 rounded-xl border-2 text-left transition-all cursor-pointer',
-                    !payNow ? 'border-primary bg-primary/5' : 'border-border hover:border-border-hover'
+                    'p-4 rounded-xl border-2 text-left transition-all',
+                    !canBillLater
+                      ? 'border-border bg-surface-elevated/60 opacity-60 cursor-not-allowed'
+                      : 'cursor-pointer ' +
+                        (!payNow ? 'border-primary bg-primary/5' : 'border-border hover:border-border-hover')
                   )}
                 >
                   <div className="flex items-center gap-3 mb-2">
-                    <div className={cn('w-9 h-9 rounded-lg flex items-center justify-center', !payNow ? 'bg-primary/10' : 'bg-surface-elevated')}>
-                      <Wallet className={cn('w-5 h-5', !payNow ? 'text-primary' : 'text-text-muted')} />
+                    <div className={cn('w-9 h-9 rounded-lg flex items-center justify-center', !payNow && canBillLater ? 'bg-primary/10' : 'bg-surface-elevated')}>
+                      {canBillLater ? (
+                        <Wallet className={cn('w-5 h-5', !payNow ? 'text-primary' : 'text-text-muted')} />
+                      ) : (
+                        <Lock className="w-5 h-5 text-text-muted" />
+                      )}
                     </div>
                     <p className="font-semibold">Bill Later</p>
                   </div>
-                  <p className="text-xs text-text-secondary leading-relaxed">
-                    Invoiced on your {company ? CREDIT_TERMS_LABELS[company.creditTerms] ?? company.creditTerms : 'credit'} terms once this order ships.
-                  </p>
+                  {canBillLater ? (
+                    <p className="text-xs text-text-secondary leading-relaxed">
+                      Invoiced on your {company ? CREDIT_TERMS_LABELS[company.creditTerms] ?? company.creditTerms : 'credit'} terms once this order ships.
+                    </p>
+                  ) : (
+                    <p className="text-xs text-text-secondary leading-relaxed">
+                      Not available on prepaid terms. Credit terms (Net 15, 30 or 60) are granted on
+                      approval &mdash; contact us to apply, and this unlocks for future orders.
+                    </p>
+                  )}
                 </button>
                 <button
                   type="button"

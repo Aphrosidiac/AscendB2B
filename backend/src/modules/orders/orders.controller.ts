@@ -71,6 +71,19 @@ export async function createOrder(fastify: FastifyInstance, companyId: string, b
   // invoice, and contactName/phone go straight into the gateway bill payload.
   assertProfileComplete(company);
 
+  // Credit is approval-gated. Everyone signs up on PREPAID; an admin raising
+  // creditTerms off PREPAID (admin-companies.controller) IS the approval, so
+  // a PREPAID account settling later would be extending itself credit nobody
+  // granted. Enforced here, not only by the greyed-out option at checkout —
+  // payNow is a plain request field a client can simply omit.
+  if (!data.payNow && company.creditTerms === 'PREPAID') {
+    throw {
+      statusCode: 422,
+      message:
+        'This account is on prepaid terms, so orders must be paid at checkout. Credit terms are available on approval — contact us to apply.',
+    };
+  }
+
   const address = await fastify.prisma.companyAddress.findUnique({ where: { id: data.shippingAddressId } });
   if (!address || address.companyId !== companyId) {
     throw { statusCode: 400, message: 'shippingAddressId does not belong to this company' };

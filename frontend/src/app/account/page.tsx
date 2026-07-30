@@ -106,6 +106,14 @@ export default function AccountPage() {
               <div>
                 <p className="text-xs font-medium uppercase tracking-wider text-white/50 mb-1">Credit Terms</p>
                 <p className="font-display font-semibold text-lg text-white/90">{CREDIT_TERMS_LABELS[company.creditTerms] ?? company.creditTerms}</p>
+                {/* Prepaid is the unapproved default every account starts on —
+                    say so, rather than leaving a buyer to discover it as a
+                    greyed-out Bill Later at checkout. */}
+                {company.creditTerms === 'PREPAID' && (
+                  <p className="text-xs text-white/50 mt-1 leading-relaxed">
+                    Orders are paid at checkout. Net 15/30/60 available on approval.
+                  </p>
+                )}
               </div>
               <div>
                 <p className="text-xs font-medium uppercase tracking-wider text-white/50 mb-1">Customer Since</p>
