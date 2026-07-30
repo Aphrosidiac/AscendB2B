@@ -79,6 +79,44 @@ export function getTieredPrice(priceTiers: PriceTier[] | undefined, quantity: nu
   return best ? best.unitPrice : fallbackPrice;
 }
 
+/**
+ * The cheapest quantity break a line hasn't reached yet, plus how many more
+ * units it takes and what the whole line would then cost.
+ *
+ * This is the one thing a wholesale cart can tell a buyer that a retail cart
+ * can't: you are three units away from a better unit price. Returns null when
+ * the line is already on the deepest tier, or has no tiers at all.
+ *
+ * Display-only, same caveat as getTieredPrice — the server recomputes the
+ * charged price at order creation.
+ */
+export function getNextTier(
+  priceTiers: PriceTier[] | undefined,
+  quantity: number,
+  fallbackPrice: number
+): { minQty: number; unitPrice: number; addMore: number; lineTotalAtTier: number; savingPerUnit: number } | null {
+  if (!priceTiers || priceTiers.length === 0) return null;
+  const current = getTieredPrice(priceTiers, quantity, fallbackPrice);
+
+  // Lowest minQty above the current quantity that actually beats today's unit
+  // price — a tier that isn't cheaper is not worth asking someone to buy into.
+  let next: PriceTier | undefined;
+  for (const tier of priceTiers) {
+    if (tier.minQty <= quantity) continue;
+    if (tier.unitPrice >= current) continue;
+    if (!next || tier.minQty < next.minQty) next = tier;
+  }
+  if (!next) return null;
+
+  return {
+    minQty: next.minQty,
+    unitPrice: next.unitPrice,
+    addMore: next.minQty - quantity,
+    lineTotalAtTier: next.unitPrice * next.minQty,
+    savingPerUnit: current - next.unitPrice,
+  };
+}
+
 export function formatDate(date: string): string {
   return new Date(date).toLocaleDateString('en-MY', {
     year: 'numeric',

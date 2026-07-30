@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { CreditCard, Wallet, ArrowLeft, CheckCircle, ShieldCheck, Truck, Lock, X, Tag, MapPin, Plus } from 'lucide-react';
+import { CreditCard, Wallet, ArrowLeft, CheckCircle, Receipt, Truck, Lock, X, Tag, MapPin, Plus } from 'lucide-react';
 import { useCart, cartLineKey } from '@/lib/cart';
 import { useCompanyAuth } from '@/hooks/useCompanyAuth';
 import { createCompanyOrder, getSettings, validateDiscount, companyListAddresses } from '@/lib/api';
@@ -377,23 +377,23 @@ export default function CheckoutPage() {
                 {items.map((item) => {
                   const unitPrice = getTieredPrice(item.priceTiers, item.quantity, item.price);
                   return (
-                    <div key={cartLineKey(item)} className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-surface-elevated rounded-lg flex items-center justify-center shrink-0 overflow-hidden">
-                        {item.imageUrl ? (
-                          <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
-                        ) : (
-                          <span className="text-[8px] font-bold text-text-muted">{item.code}</span>
-                        )}
-                      </div>
+                    // No thumbnail — picture-free storefront, and the SKU code
+                    // identifies a line better than a photo of a vial.
+                    <div key={cartLineKey(item)} className="flex items-start gap-3">
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-display font-bold truncate">
                           {item.kitId ? item.name : item.code}
                         </p>
                         <p className="text-xs text-text-muted truncate">
-                          {item.kitId ? 'Kit' : item.name} &middot; Qty: {item.quantity}
+                          {item.kitId ? 'Kit' : item.name}
+                        </p>
+                        <p className="text-xs text-text-muted tabular-nums mt-0.5">
+                          {item.quantity} &times; {formatPrice(unitPrice)}
                         </p>
                       </div>
-                      <p className="text-sm font-semibold shrink-0">{formatPrice(unitPrice * item.quantity)}</p>
+                      <p className="text-sm font-semibold shrink-0 tabular-nums">
+                        {formatPrice(unitPrice * item.quantity)}
+                      </p>
                     </div>
                   );
                 })}
@@ -464,20 +464,27 @@ export default function CheckoutPage() {
               </Button>
             </div>
 
-            {/* Trust Signals */}
-            <div className="flex items-center justify-center gap-4 text-text-muted">
-              <div className="flex items-center gap-1.5">
-                <Lock className="w-3.5 h-3.5" />
-                <span className="text-xs">Secure</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <ShieldCheck className="w-3.5 h-3.5" />
-                <span className="text-xs">Verified</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <Truck className="w-3.5 h-3.5" />
-                <span className="text-xs">{!shippingFee || shippingFee === '0' ? 'Free Shipping' : 'Peninsular Malaysia Shipping'}</span>
-              </div>
+            {/* Was "Secure / Verified / Free Shipping" — retail reassurance for
+                a stranger typing a card number. This buyer is signed in on an
+                account with terms, so the useful facts are what happens after
+                the button: how it's billed, and where it ships. */}
+            <div className="rounded-xl border border-border bg-surface p-4 space-y-2.5 text-xs text-text-secondary">
+              <p className="flex items-start gap-2">
+                <Receipt className="w-3.5 h-3.5 text-text-muted shrink-0 mt-px" />
+                {payNow
+                  ? 'Paid now by FPX or card. A receipt is issued once payment clears.'
+                  : `Invoiced on your ${company ? CREDIT_TERMS_LABELS[company.creditTerms] ?? company.creditTerms : 'credit'} terms once this order ships — nothing is charged today.`}
+              </p>
+              <p className="flex items-start gap-2">
+                <Truck className="w-3.5 h-3.5 text-text-muted shrink-0 mt-px" />
+                {!shippingFee || shippingFee === '0'
+                  ? 'Delivered across Peninsular Malaysia in temperature-conscious packaging.'
+                  : `Delivery RM${shippingFee} across Peninsular Malaysia, temperature-conscious packaging.`}
+              </p>
+              <p className="flex items-start gap-2">
+                <Lock className="w-3.5 h-3.5 text-text-muted shrink-0 mt-px" />
+                Stock is confirmed and pricing recomputed server-side when the order is created.
+              </p>
             </div>
           </div>
         </Animate>
