@@ -20,21 +20,24 @@ import {
   INVOICE_STATUS_COLORS,
 } from '@/lib/constants';
 import { Badge } from '@/components/ui/Badge';
-import { Button } from '@/components/ui/Button';
 import { Animate } from '@/components/ui/Animate';
 import { OrderStepper } from '@/components/orders/OrderStepper';
 import { TabBar, type TabBarTab } from '@/components/orders/TabBar';
 import { FadeSwap } from '@/components/orders/FadeSwap';
 import type { CompanyOrder, Invoice } from '@/types';
 
-type Tab = 'info' | 'items' | 'shipments' | 'invoices' | 'files' | 'history';
+type Tab = 'info' | 'items' | 'shipments' | 'documents' | 'history';
 
+// One tab per thing, and each thing appears exactly once. There used to be a
+// separate Invoices tab showing status but offering no download, a Files tab
+// offering downloads but showing no status, and a third copy of the receipt
+// button on Order Info — three places, none of them complete. Documents is now
+// the single home for everything the order produced, status included.
 const TABS: TabBarTab<Tab>[] = [
   { value: 'info', label: 'Order Info' },
   { value: 'items', label: 'Items' },
   { value: 'shipments', label: 'Shipments' },
-  { value: 'invoices', label: 'Invoices' },
-  { value: 'files', label: 'Files' },
+  { value: 'documents', label: 'Documents' },
   { value: 'history', label: 'History' },
 ];
 
@@ -170,11 +173,6 @@ export default function OrderDetailPage() {
                   <p className="text-sm text-text-secondary">{order.notes}</p>
                 </div>
               )}
-              <div className="mt-4 pt-4 border-t border-border">
-                <Button variant="outline" size="sm" onClick={() => token && companyOpenReceiptPdf(token, order.id)}>
-                  <FileDown className="w-3.5 h-3.5" /> Download Receipt
-                </Button>
-              </div>
             </div>
 
             {order.shippingAddress && (
@@ -243,43 +241,7 @@ export default function OrderDetailPage() {
           </div>
         )}
 
-        {tab === 'invoices' && (
-          <div className="space-y-3">
-            {invoicesLoading ? (
-              <p className="text-sm text-text-secondary">Loading invoices...</p>
-            ) : invoices.length === 0 ? (
-              <div className="text-center py-12 bg-surface rounded-xl border border-border border-dashed">
-                <FileText className="w-10 h-10 text-text-muted mx-auto mb-3" />
-                <p className="text-text-secondary">No invoices have been raised for this order yet.</p>
-              </div>
-            ) : (
-              invoices.map((invoice) => (
-                <div key={invoice.id} className="bg-surface rounded-xl border border-border p-4 sm:p-5">
-                  <div className="flex items-start justify-between gap-3 mb-2">
-                    <div>
-                      <p className="font-display font-semibold">{invoice.invoiceNumber}</p>
-                      <p className="text-xs text-text-muted">
-                        Issued {formatDate(invoice.issueDate)} &middot; Due {formatDate(invoice.dueDate)}
-                      </p>
-                    </div>
-                    <Badge className={INVOICE_STATUS_COLORS[invoice.status]}>{INVOICE_STATUS_LABELS[invoice.status]}</Badge>
-                  </div>
-                  <div className="flex justify-between text-sm pt-2 border-t border-border">
-                    <span className="text-text-secondary">Paid {formatPrice(invoice.paidAmount)} of {formatPrice(invoice.total)}</span>
-                    <span className="font-display font-semibold">{formatPrice(invoice.total)}</span>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        )}
-
-        {/* Every document this order produced, in one place. Previously this
-            tab only listed batch COAs, so the receipt was buried on the Order
-            Info tab, invoices could only be downloaded by navigating away to
-            /account/invoices, and the quotation an order was priced by wasn't
-            reachable from the order at all. */}
-        {tab === 'files' && (
+        {tab === 'documents' && (
           <div className="space-y-6">
             <section className="space-y-3">
               <h2 className="font-display font-semibold text-sm text-text-secondary">
@@ -324,32 +286,53 @@ export default function OrderDetailPage() {
                 </button>
               )}
 
+              {/* Carries what the separate Invoices tab used to show — status,
+                  and how much of it is settled — so an invoice is one row with
+                  both its state and its file, not a status in one tab and a
+                  download in another. */}
               {invoices.map((invoice) => (
-                <button
+                <div
                   key={invoice.id}
-                  type="button"
-                  onClick={() => token && companyOpenInvoicePdf(token, invoice.id)}
-                  className="w-full flex items-center justify-between gap-3 bg-surface rounded-xl border border-border p-4 sm:p-5 hover:border-border-hover transition-colors cursor-pointer text-left"
+                  className="bg-surface rounded-xl border border-border p-4 sm:p-5"
                 >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-9 h-9 rounded-lg bg-surface-elevated flex items-center justify-center shrink-0">
-                      <Receipt className="w-4 h-4 text-text-muted" />
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-9 h-9 rounded-lg bg-surface-elevated flex items-center justify-center shrink-0">
+                        <Receipt className="w-4 h-4 text-text-muted" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate">
+                          Invoice {invoice.invoiceNumber}
+                        </p>
+                        <p className="text-xs text-text-muted">
+                          Issued {formatDate(invoice.issueDate)} &middot; Due{' '}
+                          {formatDate(invoice.dueDate)}
+                        </p>
+                      </div>
                     </div>
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium truncate">Invoice</p>
-                      <p className="text-xs text-text-muted">
-                        {invoice.invoiceNumber} &middot; {formatPrice(invoice.total)} &middot; due{' '}
-                        {formatDate(invoice.dueDate)}
-                      </p>
-                    </div>
+                    <Badge className={INVOICE_STATUS_COLORS[invoice.status]}>
+                      {INVOICE_STATUS_LABELS[invoice.status]}
+                    </Badge>
                   </div>
-                  <span className="text-xs font-medium text-text-secondary shrink-0">Download</span>
-                </button>
+
+                  <div className="flex items-center justify-between gap-3 mt-3 pt-3 border-t border-border">
+                    <span className="text-sm text-text-secondary tabular-nums">
+                      Paid {formatPrice(invoice.paidAmount)} of {formatPrice(invoice.total)}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => token && companyOpenInvoicePdf(token, invoice.id)}
+                      className="inline-flex items-center gap-1.5 text-xs font-medium text-text-secondary hover:text-text-primary transition-colors cursor-pointer"
+                    >
+                      <FileDown className="w-3.5 h-3.5" /> Download
+                    </button>
+                  </div>
+                </div>
               ))}
 
               {!invoicesLoading && invoices.length === 0 && (
                 <p className="text-sm text-text-muted">
-                  No invoice yet — one is issued when the order ships.
+                  No invoice raised for this order yet — one is issued when it ships.
                 </p>
               )}
             </section>
