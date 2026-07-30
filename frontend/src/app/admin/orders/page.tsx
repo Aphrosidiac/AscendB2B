@@ -1,10 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Search } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
+import { useDebounced } from '@/hooks/useDebounced';
+import { useCachedFetch } from '@/hooks/useCachedFetch';
 import { adminGetOrders } from '@/lib/api';
 import { formatPrice, formatDate } from '@/lib/utils';
 import { rowLink } from '@/lib/row-link';
@@ -16,25 +18,28 @@ import type { AdminOrder, CompanyOrderStatus } from '@/types';
 
 type FilterValue = CompanyOrderStatus | '';
 
+// Stable identity so the cache hook's fallback doesn't change every render.
+const NO_ORDERS: AdminOrder[] = [];
+
 export default function AdminOrdersPage() {
   const router = useRouter();
   const { token } = useAuth();
-  const [orders, setOrders] = useState<AdminOrder[]>([]);
-  const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState<FilterValue>('');
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounced(search);
 
-  useEffect(() => {
-    if (!token) return;
-    setLoading(true);
+  const fetcher = useCallback(() => {
     const params: Record<string, string> = { limit: '50' };
     if (status) params.status = status;
-    if (search) params.search = search;
-    adminGetOrders(token, params)
-      .then((r) => setOrders(r.data))
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [token, status, search]);
+    if (debouncedSearch) params.search = debouncedSearch;
+    return adminGetOrders(token!, params).then((r) => r.data);
+  }, [token, status, debouncedSearch]);
+
+  const { data: orders, loading } = useCachedFetch(
+    token ? `admin/orders|${status}|${debouncedSearch}` : null,
+    fetcher,
+    NO_ORDERS
+  );
 
   return (
     <div>
@@ -64,7 +69,7 @@ export default function AdminOrdersPage() {
         />
       </div>
 
-      <FadeSwap swapKey={loading ? 'loading' : `${status}:${search}:${orders.length}`}>
+      <FadeSwap swapKey={loading ? 'loading' : `${status}:${debouncedSearch}:${orders.length}`}>
         {loading ? (
           <div className="animate-pulse space-y-2">
             {Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-14 bg-surface-elevated rounded-xl" />)}
@@ -73,7 +78,7 @@ export default function AdminOrdersPage() {
           <div className="text-center py-16">
             <p className="text-text-muted text-lg mb-1">No orders found</p>
             <p className="text-text-muted text-sm">
-              {search ? 'Try a different search term.' : status ? 'No orders with this status.' : 'Orders will appear here once companies start purchasing.'}
+              {debouncedSearch ? 'Try a different search term.' : status ? 'No orders with this status.' : 'Orders will appear here once companies start purchasing.'}
             </p>
           </div>
         ) : (

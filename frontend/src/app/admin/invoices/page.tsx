@@ -1,10 +1,12 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Search, Plus, ChevronLeft, ChevronRight, AlertTriangle, Wallet } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
+import { useDebounced } from '@/hooks/useDebounced';
+import { useCachedFetch, invalidateCache } from '@/hooks/useCachedFetch';
 import { adminListInvoices } from '@/lib/api';
 import { formatPrice, formatShortDate } from '@/lib/utils';
 import { rowLink } from '@/lib/row-link';
@@ -18,6 +20,11 @@ import { overdueLabel } from './utils';
 import type { Invoice, InvoiceReceivablesSummary, PaginatedResponse } from '@/types';
 
 const LIMIT = 25;
+
+type InvoicesResponse = PaginatedResponse<Invoice> & { summary: InvoiceReceivablesSummary };
+
+// Stable identity so a cache miss doesn't hand the table a new array each render.
+const NO_INVOICES: Invoice[] = [];
 
 // `OUTSTANDING` isn't an InvoiceStatus — it's the server's operational rollup
 // (unpaid + partially paid + overdue), i.e. the view an admin actually works
@@ -70,39 +77,29 @@ export default function AdminInvoicesPage() {
   const { token } = useAuth();
   const router = useRouter();
 
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [pagination, setPagination] = useState<PaginatedResponse<Invoice>['pagination'] | null>(null);
-  const [summary, setSummary] = useState<InvoiceReceivablesSummary | null>(null);
-  const [loading, setLoading] = useState(true);
   // Opens on the working view, not on everything ever billed.
   const [status, setStatus] = useState<string>('OUTSTANDING');
   const [search, setSearch] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const debouncedSearch = useDebounced(search);
   const [page, setPage] = useState(1);
   const [showGenerate, setShowGenerate] = useState(false);
 
-  useEffect(() => {
-    const timeout = setTimeout(() => setDebouncedSearch(search), 300);
-    return () => clearTimeout(timeout);
-  }, [search]);
-
-  const load = useCallback(() => {
-    if (!token) return;
-    setLoading(true);
+  const fetcher = useCallback(() => {
     const params: Record<string, string> = { page: String(page), limit: String(LIMIT) };
     if (status) params.status = status;
     if (debouncedSearch) params.search = debouncedSearch;
-    adminListInvoices(token, params)
-      .then((r) => {
-        setInvoices(r.data);
-        setPagination(r.pagination);
-        setSummary(r.summary);
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    return adminListInvoices(token!, params);
   }, [token, status, debouncedSearch, page]);
 
-  useEffect(load, [load]);
+  const { data: result, loading } = useCachedFetch<InvoicesResponse | null>(
+    token ? `admin/invoices|${status}|${debouncedSearch}|${page}` : null,
+    fetcher,
+    null
+  );
+
+  const invoices = result?.data ?? NO_INVOICES;
+  const pagination = result?.pagination ?? null;
+  const summary = result?.summary ?? null;
 
   return (
     <div>
@@ -258,7 +255,14 @@ export default function AdminInvoicesPage() {
         <GenerateInvoiceModal
           token={token!}
           onClose={() => setShowGenerate(false)}
-          onGenerated={(invoiceId) => { setShowGenerate(false); router.push(`/admin/invoices/${invoiceId}`); }}
+          // A new invoice makes every cached page of this list wrong, and the
+          // admin lands back here from the detail page — drop them all rather
+          // than showing a list that's missing the invoice just created.
+          onGenerated={(invoiceId) => {
+            invalidateCache('admin/invoices');
+            setShowGenerate(false);
+            router.push(`/admin/invoices/${invoiceId}`);
+          }}
         />
       )}
     </div>

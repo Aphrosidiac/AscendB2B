@@ -1,10 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Plus, Search, ChevronDown } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
+import { useDebounced } from '@/hooks/useDebounced';
+import { useCachedFetch } from '@/hooks/useCachedFetch';
 import { adminListCampaigns } from '@/lib/api';
 import { formatDate } from '@/lib/utils';
 import { rowLink } from '@/lib/row-link';
@@ -16,25 +18,29 @@ import type { PreorderCampaign, CampaignStatus } from '@/types';
 
 type StatusFilter = CampaignStatus | 'all';
 
+// Stable identity so the cache hook's fallback doesn't change every render.
+const NO_CAMPAIGNS: PreorderCampaign[] = [];
+
+
 export default function AdminCampaignsPage() {
   const router = useRouter();
   const { token } = useAuth();
-  const [campaigns, setCampaigns] = useState<PreorderCampaign[]>([]);
-  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounced(search);
   const [status, setStatus] = useState<StatusFilter>('all');
 
-  useEffect(() => {
-    if (!token) return;
-    setLoading(true);
+  const fetcher = useCallback(() => {
     const params: Record<string, string> = { limit: '100' };
     if (status !== 'all') params.status = status;
-    if (search) params.search = search;
-    adminListCampaigns(token, params)
-      .then((r) => setCampaigns(r.data))
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [token, status, search]);
+    if (debouncedSearch) params.search = debouncedSearch;
+    return adminListCampaigns(token!, params).then((r) => r.data);
+  }, [token, status, debouncedSearch]);
+
+  const { data: campaigns, loading } = useCachedFetch(
+    token ? `admin/campaigns|${status}|${debouncedSearch}` : null,
+    fetcher,
+    NO_CAMPAIGNS
+  );
 
   return (
     <div>
@@ -69,7 +75,7 @@ export default function AdminCampaignsPage() {
         </div>
       </div>
 
-      <FadeSwap swapKey={loading ? 'loading' : `${status}:${search}:${campaigns.length}`}>
+      <FadeSwap swapKey={loading ? 'loading' : `${status}:${debouncedSearch}:${campaigns.length}`}>
         {loading ? (
           <div className="animate-pulse space-y-2">
             {Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-14 bg-surface-elevated rounded-xl" />)}

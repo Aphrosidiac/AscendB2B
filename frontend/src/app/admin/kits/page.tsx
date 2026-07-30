@@ -1,10 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Plus, Search, Pencil, ChevronDown } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
+import { useDebounced } from '@/hooks/useDebounced';
+import { useCachedFetch } from '@/hooks/useCachedFetch';
 import { adminListKits } from '@/lib/api';
 import { formatPrice } from '@/lib/utils';
 import { rowLink } from '@/lib/row-link';
@@ -15,25 +17,29 @@ import type { Kit } from '@/types';
 
 type ActiveFilter = 'all' | 'active' | 'inactive';
 
+// Stable identity so the cache hook's fallback doesn't change every render.
+const NO_KITS: Kit[] = [];
+
+
 export default function AdminKitsPage() {
   const router = useRouter();
   const { token } = useAuth();
-  const [kits, setKits] = useState<Kit[]>([]);
-  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounced(search);
   const [activeFilter, setActiveFilter] = useState<ActiveFilter>('all');
 
-  useEffect(() => {
-    if (!token) return;
-    setLoading(true);
+  const fetcher = useCallback(() => {
     const params: Record<string, string> = { limit: '100' };
-    if (search) params.search = search;
+    if (debouncedSearch) params.search = debouncedSearch;
     if (activeFilter !== 'all') params.active = activeFilter === 'active' ? 'true' : 'false';
-    adminListKits(token, params)
-      .then((r) => setKits(r.data))
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [token, search, activeFilter]);
+    return adminListKits(token!, params).then((r) => r.data);
+  }, [token, debouncedSearch, activeFilter]);
+
+  const { data: kits, loading } = useCachedFetch(
+    token ? `admin/kits|${activeFilter}|${debouncedSearch}` : null,
+    fetcher,
+    NO_KITS
+  );
 
   return (
     <div>
@@ -67,7 +73,7 @@ export default function AdminKitsPage() {
         </div>
       </div>
 
-      <FadeSwap swapKey={loading ? 'loading' : `${search}:${activeFilter}:${kits.length}`}>
+      <FadeSwap swapKey={loading ? 'loading' : `${debouncedSearch}:${activeFilter}:${kits.length}`}>
         {loading ? (
           <div className="animate-pulse space-y-2">
             {Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-14 bg-surface-elevated rounded-xl" />)}

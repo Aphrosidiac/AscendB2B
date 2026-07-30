@@ -1,10 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Search } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
+import { useDebounced } from '@/hooks/useDebounced';
+import { useCachedFetch } from '@/hooks/useCachedFetch';
 import { adminListCompanies } from '@/lib/api';
 import { rowLink } from '@/lib/row-link';
 import { CREDIT_TERMS_LABELS } from '@/lib/constants';
@@ -12,23 +14,27 @@ import { Badge } from '@/components/ui/Badge';
 import { FadeSwap } from '@/components/orders/FadeSwap';
 import type { AdminCompany } from '@/types';
 
+
+// Stable identity so the cache hook's fallback doesn't change every render.
+const NO_COMPANIES: AdminCompany[] = [];
+
 export default function AdminCompaniesPage() {
   const router = useRouter();
   const { token } = useAuth();
-  const [companies, setCompanies] = useState<AdminCompany[]>([]);
-  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounced(search);
 
-  useEffect(() => {
-    if (!token) return;
-    setLoading(true);
+  const fetcher = useCallback(() => {
     const params: Record<string, string> = { limit: '100' };
-    if (search) params.search = search;
-    adminListCompanies(token, params)
-      .then((r) => setCompanies(r.data))
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [token, search]);
+    if (debouncedSearch) params.search = debouncedSearch;
+    return adminListCompanies(token!, params).then((r) => r.data);
+  }, [token, debouncedSearch]);
+
+  const { data: companies, loading } = useCachedFetch(
+    token ? `admin/companies|${debouncedSearch}` : null,
+    fetcher,
+    NO_COMPANIES
+  );
 
   return (
     <div>
@@ -48,7 +54,7 @@ export default function AdminCompaniesPage() {
         />
       </div>
 
-      <FadeSwap swapKey={loading ? 'loading' : `${search}:${companies.length}`}>
+      <FadeSwap swapKey={loading ? 'loading' : `${debouncedSearch}:${companies.length}`}>
         {loading ? (
           <div className="animate-pulse space-y-2">
             {Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-14 bg-surface-elevated rounded-xl" />)}

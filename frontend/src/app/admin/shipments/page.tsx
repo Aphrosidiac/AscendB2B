@@ -1,10 +1,12 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Search, ChevronLeft, ChevronRight, Truck } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
+import { useDebounced } from '@/hooks/useDebounced';
+import { useCachedFetch } from '@/hooks/useCachedFetch';
 import { adminListShipments } from '@/lib/api';
 import { formatShortDate, cn } from '@/lib/utils';
 import { rowLink } from '@/lib/row-link';
@@ -39,6 +41,9 @@ interface ShipmentRow extends Omit<AdminShipment, 'order'> {
   } | null;
 }
 
+// Stable identity so a cache miss doesn't hand the table a new array each render.
+const NO_SHIPMENTS: ShipmentRow[] = [];
+
 interface ShipmentsResponse {
   data: ShipmentRow[];
   pagination: PaginatedResponse<AdminShipment>['pagination'];
@@ -49,38 +54,27 @@ export default function AdminShipmentsPage() {
   const router = useRouter();
   const { token } = useAuth();
 
-  const [shipments, setShipments] = useState<ShipmentRow[]>([]);
-  const [pagination, setPagination] = useState<PaginatedResponse<AdminShipment>['pagination'] | null>(null);
-  const [pendingCount, setPendingCount] = useState<number | null>(null);
-  const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState<string>('PENDING');
   const [search, setSearch] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const debouncedSearch = useDebounced(search);
   const [page, setPage] = useState(1);
 
-  useEffect(() => {
-    const timeout = setTimeout(() => setDebouncedSearch(search), 300);
-    return () => clearTimeout(timeout);
-  }, [search]);
-
-  const load = useCallback(() => {
-    if (!token) return;
-    setLoading(true);
+  const fetcher = useCallback(() => {
     const params: Record<string, string> = { page: String(page), limit: String(LIMIT) };
     if (status) params.status = status;
     if (debouncedSearch) params.search = debouncedSearch;
-    adminListShipments(token, params)
-      .then((r) => {
-        const res = r as unknown as ShipmentsResponse;
-        setShipments(res.data);
-        setPagination(res.pagination);
-        if (res.summary) setPendingCount(res.summary.pendingCount);
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    return adminListShipments(token!, params).then((r) => r as unknown as ShipmentsResponse);
   }, [token, status, debouncedSearch, page]);
 
-  useEffect(load, [load]);
+  const { data: result, loading } = useCachedFetch<ShipmentsResponse | null>(
+    token ? `admin/shipments|${status}|${debouncedSearch}|${page}` : null,
+    fetcher,
+    null
+  );
+
+  const shipments = result?.data ?? NO_SHIPMENTS;
+  const pagination = result?.pagination ?? null;
+  const pendingCount = result?.summary?.pendingCount ?? null;
 
   return (
     <div>
