@@ -51,8 +51,10 @@ export function KitPurchasePanel({ kit }: Props) {
       price: kit.pricePerKit,
       quantity,
       stock: available,
-      // Kits are priced flat per kit — no quantity breaks, so no priceTiers.
-      imageUrl: kit.items.find((i) => i.variant.imageUrl)?.variant.imageUrl ?? null,
+      // Kits are priced flat per kit — no quantity breaks, so no priceTiers
+      // (which is also why the cart shows no tier nudge on a kit line).
+      // imageUrl null by design: nothing in the cart renders a thumbnail.
+      imageUrl: null,
       kitContents: kit.items.map((i) => ({
         name: i.variant.product.name,
         size: i.variant.size,

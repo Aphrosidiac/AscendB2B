@@ -12,9 +12,9 @@ interface KitCardProps {
 
 export function KitCard({ kit }: KitCardProps) {
   const soldOut = kit.available === 0;
-  // Component thumbnails double as the card's visual — a kit has no image of
-  // its own, and showing what's inside is more useful than a generic icon.
-  const thumbnails = kit.items.filter((i) => i.variant.imageUrl).slice(0, 3);
+  // No thumbnails: the storefront is picture-free, and a kit's contents list
+  // says more than three near-identical vial photos ever did.
+  const totalUnits = kit.items.reduce((sum, i) => sum + i.quantity, 0);
 
   return (
     <Link href={`/kits/${kit.id}`} className="group h-full block">
@@ -30,43 +30,30 @@ export function KitCard({ kit }: KitCardProps) {
           {kit.name}
         </h3>
 
-        <p className="text-sm text-text-secondary mt-1">
-          {kit.items.length} {kit.items.length === 1 ? 'product' : 'products'} per kit
+        <p className="text-sm text-text-secondary mt-1 tabular-nums">
+          {kit.items.length} {kit.items.length === 1 ? 'SKU' : 'SKUs'} &middot; {totalUnits}{' '}
+          {totalUnits === 1 ? 'unit' : 'units'} per kit
         </p>
 
-        {thumbnails.length > 0 && (
-          <div className="flex -space-x-2 mt-3">
-            {thumbnails.map((item) => (
-              <div
-                key={item.id}
-                className="w-9 h-9 rounded-lg border-2 border-surface bg-surface-elevated overflow-hidden shrink-0"
-              >
-                <img
-                  src={item.variant.imageUrl!}
-                  alt=""
-                  className="w-full h-full object-cover"
-                />
-              </div>
-            ))}
-            {kit.items.length > thumbnails.length && (
-              <div className="w-9 h-9 rounded-lg border-2 border-surface bg-surface-elevated flex items-center justify-center shrink-0">
-                <span className="text-[10px] font-semibold text-text-muted">
-                  +{kit.items.length - thumbnails.length}
-                </span>
-              </div>
-            )}
-          </div>
-        )}
-
-        <ul className="mt-3 space-y-0.5">
-          {kit.items.slice(0, 3).map((item) => (
-            <li key={item.id} className="text-xs text-text-muted truncate">
-              {item.quantity}&times; {item.variant.product.name}
-              {item.variant.size ? ` ${item.variant.size}` : ''}
+        {/* The contents ARE the card. Code first, matching how every other
+            list on the site identifies a SKU. */}
+        <ul className="mt-3 space-y-1">
+          {kit.items.slice(0, 4).map((item) => (
+            <li key={item.id} className="flex items-baseline gap-2 text-xs">
+              <span className="font-display font-bold tracking-wide text-text-secondary shrink-0">
+                {item.variant.code}
+              </span>
+              <span className="text-text-muted truncate">
+                {item.variant.product.name}
+                {item.variant.size ? ` ${item.variant.size}` : ''}
+              </span>
+              <span className="ml-auto text-text-muted tabular-nums shrink-0">
+                &times;{item.quantity}
+              </span>
             </li>
           ))}
-          {kit.items.length > 3 && (
-            <li className="text-xs text-text-muted">+{kit.items.length - 3} more</li>
+          {kit.items.length > 4 && (
+            <li className="text-xs text-text-muted">+{kit.items.length - 4} more</li>
           )}
         </ul>
 

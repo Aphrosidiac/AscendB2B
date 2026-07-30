@@ -59,36 +59,48 @@ export default async function KitDetailPage({ params }: Props) {
           <Animate variant="fadeUp" delay={0.1}>
             <div className="bg-surface rounded-xl border border-border p-5 sm:p-6">
               <h2 className="font-display font-semibold text-lg mb-4">What&apos;s in this kit</h2>
-              <ul className="divide-y divide-border">
-                {kit.items.map((item) => (
-                  <li key={item.id} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
-                    <div className="w-12 h-12 bg-surface-elevated rounded-lg flex items-center justify-center shrink-0 overflow-hidden">
-                      {item.variant.imageUrl ? (
-                        <img
-                          src={item.variant.imageUrl}
-                          alt=""
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <span className="text-[10px] font-bold text-text-muted">
+              {/* Laid out like the /products price list rather than a photo
+                  list: code first, then the compound, then how many of it are
+                  in one kit. No thumbnails — same call as the rest of the
+                  storefront, and it was rendering a broken image locally
+                  because /uploads is only mapped by nginx in production. */}
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left border-b border-border">
+                    <th className="pb-2 font-medium text-text-secondary">SKU</th>
+                    <th className="pb-2 font-medium text-text-secondary">Compound</th>
+                    <th className="pb-2 font-medium text-text-secondary text-right whitespace-nowrap">
+                      Per kit
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {kit.items.map((item) => (
+                    <tr key={item.id}>
+                      <td className="py-2.5 pr-4 whitespace-nowrap">
+                        <Link
+                          href={`/products/${item.variant.product.slug}`}
+                          className="font-display font-bold tracking-wide hover:text-primary-light transition-colors"
+                        >
                           {item.variant.code}
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <Link
-                        href={`/products/${item.variant.product.slug}`}
-                        className="font-medium text-sm hover:text-primary-light transition-colors"
-                      >
-                        {item.variant.product.name}
-                        {item.variant.size ? ` ${item.variant.size}` : ''}
-                      </Link>
-                      <p className="text-xs text-text-muted">{item.variant.code}</p>
-                    </div>
-                    <span className="text-sm font-semibold shrink-0">&times;{item.quantity}</span>
-                  </li>
-                ))}
-              </ul>
+                        </Link>
+                      </td>
+                      <td className="py-2.5 pr-4 text-text-secondary">
+                        <Link
+                          href={`/products/${item.variant.product.slug}`}
+                          className="hover:text-primary-light transition-colors"
+                        >
+                          {item.variant.product.name}
+                          {item.variant.size ? ` ${item.variant.size}` : ''}
+                        </Link>
+                      </td>
+                      <td className="py-2.5 text-right font-medium tabular-nums whitespace-nowrap">
+                        &times;{item.quantity}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </Animate>
 
