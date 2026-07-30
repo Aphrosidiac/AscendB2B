@@ -18,10 +18,16 @@ import {
 } from 'lucide-react';
 import { useCart } from '@/lib/cart';
 import { useCompanyAuth } from '@/hooks/useCompanyAuth';
-import { CREDIT_TERMS_LABELS } from '@/lib/constants';
+import { CREDIT_TERMS_LABELS, CREDIT_TERMS_DESCRIPTIONS, CREDIT_TERMS_ORDER } from '@/lib/constants';
+import { listCompanyInvoices } from '@/lib/api';
+import { summariseInvoices } from '@/lib/invoices';
+import { formatPrice } from '@/lib/utils';
 import { PriceLadder } from '@/components/ui/PriceLadder';
 
 const EASE = 'cubic-bezier(0.16,1,0.3,1)';
+// Dropdowns want to feel instant — the mobile overlay's 500ms would read as
+// sluggish on a menu opened dozens of times a session.
+const ACCT_MENU_MS = 160;
 
 // Catalogue navigation only. Account destinations used to be mixed in here
 // ("Sign In", "Account", "My Orders" as peer links beside Products), which
@@ -34,6 +40,23 @@ const NAV_LINKS = [
   { href: '/about', label: 'About' },
 ];
 
+/**
+ * Nav links including Profile, whose destination depends on the session.
+ *
+ * Signed out it goes to sign-in rather than /account, which would only bounce
+ * off that page's auth guard — and it carries ?redirect so signing in lands on
+ * the profile the visitor was actually asking for, not the homepage.
+ */
+function navLinksFor(isAuthenticated: boolean) {
+  return [
+    ...NAV_LINKS,
+    {
+      href: isAuthenticated ? '/account' : '/login?redirect=/account',
+      label: 'Profile',
+    },
+  ];
+}
+
 // The daily surfaces for a signed-in trade buyer. Previously all of these were
 // only reachable by first landing on /account.
 const ACCOUNT_LINKS = [
@@ -45,7 +68,7 @@ const ACCOUNT_LINKS = [
 
 export function Navbar() {
   const { itemCount } = useCart();
-  const { isAuthenticated, company, logout } = useCompanyAuth();
+  const { isAuthenticated, company, logout, token } = useCompanyAuth();
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   // menuOpen is the logical on/off state; menuMounted keeps the overlay in
@@ -57,8 +80,37 @@ export function Navbar() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [acctOpen, setAcctOpen] = useState(false);
+  // Same three-state dance as the mobile overlay below — acctMounted keeps the
+  // menu in the DOM for its exit transition, acctVisible flips a frame after
+  // mount so the entrance has a "from" state to animate out of.
+  const [acctMounted, setAcctMounted] = useState(false);
+  const [acctVisible, setAcctVisible] = useState(false);
+  // Fetched lazily when the menu first opens rather than on every page load —
+  // the balance is only ever shown inside the menu.
+  const [balance, setBalance] = useState<{ outstanding: number; overdue: number; overdueCount: number } | null>(null);
+  const balanceRequested = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const acctRef = useRef<HTMLDivElement>(null);
+  const acctCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Driven from handlers rather than an effect on acctOpen: the visible flip
+  // has to happen a frame after mount (so the transition has a "from" state),
+  // and doing that in an effect means setting state synchronously in its body.
+  const openAcct = () => {
+    if (acctCloseTimer.current) clearTimeout(acctCloseTimer.current);
+    setAcctOpen(true);
+    setAcctMounted(true);
+    requestAnimationFrame(() => requestAnimationFrame(() => setAcctVisible(true)));
+  };
+
+  const closeAcct = () => {
+    setAcctOpen(false);
+    setAcctVisible(false);
+    if (acctCloseTimer.current) clearTimeout(acctCloseTimer.current);
+    // Unmount only once the exit transition has finished.
+    acctCloseTimer.current = setTimeout(() => setAcctMounted(false), ACCT_MENU_MS);
+  };
+
 
   useEffect(() => {
     if (searchOpen && inputRef.current) {
@@ -70,12 +122,21 @@ export function Navbar() {
   // while it's actually open so the listeners aren't live for the whole
   // session.
   useEffect(() => {
+    if (!acctOpen || !token || balanceRequested.current) return;
+    balanceRequested.current = true;
+    listCompanyInvoices(token, { limit: '100' })
+      .then((res) => setBalance(summariseInvoices(res.data)))
+      // Balance is supplementary — the menu is still useful without it.
+      .catch(() => {});
+  }, [acctOpen, token]);
+
+  useEffect(() => {
     if (!acctOpen) return;
     const onDown = (e: MouseEvent) => {
-      if (acctRef.current && !acctRef.current.contains(e.target as Node)) setAcctOpen(false);
+      if (acctRef.current && !acctRef.current.contains(e.target as Node)) closeAcct();
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setAcctOpen(false);
+      if (e.key === 'Escape') closeAcct();
     };
     document.addEventListener('mousedown', onDown);
     document.addEventListener('keydown', onKey);
@@ -117,8 +178,10 @@ export function Navbar() {
     setSearchQuery('');
   };
 
+  const navLinks = navLinksFor(isAuthenticated);
+
   const handleLogout = () => {
-    setAcctOpen(false);
+    closeAcct();
     setMenuOpen(false);
     logout();
     router.push('/');
@@ -128,7 +191,7 @@ export function Navbar() {
     <>
     <nav className="sticky top-0 z-50 bg-surface/95 backdrop-blur border-b border-border">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
+        <div className="relative flex items-center justify-between h-16 gap-4">
           {/* Lockup carries the "Trade Supply" qualifier — the header was
               indistinguishable from the retail storefront's, on a site where
               every price and term is trade-only. */}
@@ -144,9 +207,13 @@ export function Navbar() {
             </span>
           </Link>
 
-          {/* Center: nav links, or the search field once opened. */}
-          <div className="flex-1 flex justify-center mx-4">
-            {searchOpen ? (
+          {/* Search takes the flow slot (it wants the leftover width); the nav
+              links are absolutely centred on the bar instead. With both in a
+              flex-1 middle, `justify-between` centred them on the gap between
+              the logo and the account cluster — and since those two differ in
+              width, the links sat visibly left of the page centre. */}
+          {searchOpen ? (
+            <div className="flex-1 flex justify-center">
               <form onSubmit={handleSearch} className="w-full max-w-md animate-search-expand">
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
@@ -168,25 +235,25 @@ export function Navbar() {
                   </button>
                 </div>
               </form>
-            ) : (
-              <div className="hidden md:flex items-center gap-8">
-                {NAV_LINKS.map((link) => (
-                  <Link
-                    key={link.href}
-                    href={link.href}
-                    className="text-sm font-medium text-text-secondary hover:text-text-primary transition-colors"
-                  >
-                    {link.label}
-                  </Link>
-                ))}
-              </div>
-            )}
-          </div>
+            </div>
+          ) : (
+            <div className="hidden md:flex absolute left-1/2 -translate-x-1/2 items-center gap-8 whitespace-nowrap">
+              {navLinks.map((link) => (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className="text-sm font-medium text-text-secondary hover:text-text-primary transition-colors"
+                >
+                  {link.label}
+                </Link>
+              ))}
+            </div>
+          )}
 
           <div className="flex items-center gap-1 sm:gap-2 shrink-0">
             {!searchOpen && (
               <button
-                onClick={() => { setSearchOpen(true); setMenuOpen(false); setAcctOpen(false); }}
+                onClick={() => { setSearchOpen(true); setMenuOpen(false); closeAcct(); }}
                 className="p-3 hover:bg-surface-elevated rounded-lg transition-colors cursor-pointer"
                 aria-label="Search"
               >
@@ -226,7 +293,7 @@ export function Navbar() {
             {!searchOpen && isAuthenticated && (
               <div className="relative hidden sm:block" ref={acctRef}>
                 <button
-                  onClick={() => setAcctOpen((o) => !o)}
+                  onClick={() => (acctOpen ? closeAcct() : openAcct())}
                   aria-expanded={acctOpen}
                   aria-haspopup="menu"
                   className="flex items-center gap-2 rounded-lg border border-border pl-3 pr-2 py-1.5 hover:border-border-hover hover:bg-surface-elevated transition-colors cursor-pointer max-w-[220px]"
@@ -246,17 +313,93 @@ export function Navbar() {
                   />
                 </button>
 
-                {acctOpen && (
+                {acctMounted && (
                   <div
                     role="menu"
-                    className="absolute right-0 mt-2 w-56 rounded-xl border border-border bg-surface shadow-lg overflow-hidden"
+                    // origin-top-right so it unfolds from the chip it belongs
+                    // to rather than growing from its own middle.
+                    className="absolute right-0 mt-2 w-80 rounded-xl border border-border bg-surface shadow-lg overflow-hidden origin-top-right"
+                    style={{
+                      transition: `opacity ${ACCT_MENU_MS}ms, transform ${ACCT_MENU_MS}ms`,
+                      transitionTimingFunction: EASE,
+                      opacity: acctVisible ? 1 : 0,
+                      transform: acctVisible ? 'translateY(0) scale(1)' : 'translateY(-6px) scale(0.97)',
+                    }}
                   >
+                    {/* The chip only has room for the bare term ("Net 30"),
+                        which says nothing about when you're billed, what you
+                        owe, or that other tiers exist. This panel answers all
+                        three. */}
+                    {company && (
+                      <div className="px-4 py-3.5 border-b border-border bg-surface-elevated/50">
+                        <p className="font-display font-semibold text-sm leading-snug">
+                          {company.name ?? company.username}
+                        </p>
+                        <p className="text-xs text-text-muted truncate">{company.email}</p>
+
+                        <p className="text-xs font-medium uppercase tracking-wider text-text-muted mt-3">
+                          Payment terms
+                        </p>
+                        <p className="text-sm mt-0.5">
+                          {CREDIT_TERMS_LABELS[company.creditTerms] ?? company.creditTerms}
+                        </p>
+                        <p className="text-xs text-text-secondary leading-relaxed mt-0.5">
+                          {CREDIT_TERMS_DESCRIPTIONS[company.creditTerms]}
+                        </p>
+
+                        {/* The ladder — shows the rung you're on and the ones
+                            you aren't, so the label has somewhere to sit. */}
+                        <div className="flex gap-1 mt-2.5">
+                          {CREDIT_TERMS_ORDER.map((term) => {
+                            const isCurrent = term === company.creditTerms;
+                            return (
+                              <span
+                                key={term}
+                                className={`flex-1 rounded px-1.5 py-1 text-center text-[10px] font-medium ${
+                                  isCurrent
+                                    ? 'bg-primary text-white'
+                                    : 'bg-surface text-text-muted border border-border'
+                                }`}
+                              >
+                                {CREDIT_TERMS_LABELS[term]}
+                              </span>
+                            );
+                          })}
+                        </div>
+                        {company.creditTerms === 'PREPAID' && (
+                          <p className="text-xs text-text-muted mt-1.5 leading-relaxed">
+                            Longer terms are granted on approval — contact us to apply.
+                          </p>
+                        )}
+
+                        {balance && balance.outstanding > 0 && (
+                          <Link
+                            href="/account/invoices"
+                            onClick={closeAcct}
+                            className="mt-3 flex items-baseline justify-between gap-3 rounded-lg border border-border bg-surface px-3 py-2 hover:border-border-hover transition-colors"
+                          >
+                            <span className="text-xs text-text-secondary">Outstanding</span>
+                            <span className="text-right">
+                              <span className="block font-display font-bold text-sm tabular-nums">
+                                {formatPrice(balance.outstanding)}
+                              </span>
+                              {balance.overdue > 0 && (
+                                <span className="block text-[11px] text-danger tabular-nums">
+                                  {formatPrice(balance.overdue)} overdue
+                                </span>
+                              )}
+                            </span>
+                          </Link>
+                        )}
+                      </div>
+                    )}
+
                     {ACCOUNT_LINKS.map(({ href, label, Icon }) => (
                       <Link
                         key={href}
                         href={href}
                         role="menuitem"
-                        onClick={() => setAcctOpen(false)}
+                        onClick={closeAcct}
                         className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-text-secondary hover:bg-surface-elevated hover:text-text-primary transition-colors"
                       >
                         <Icon className="w-4 h-4 text-text-muted shrink-0" />
@@ -266,7 +409,7 @@ export function Navbar() {
                     <Link
                       href="/account"
                       role="menuitem"
-                      onClick={() => setAcctOpen(false)}
+                      onClick={closeAcct}
                       className="block px-4 py-2.5 text-sm text-text-secondary hover:bg-surface-elevated hover:text-text-primary transition-colors border-t border-border"
                     >
                       Account settings
@@ -286,7 +429,7 @@ export function Navbar() {
 
             {!searchOpen && (
               <button
-                onClick={() => { setMenuOpen(!menuOpen); setAcctOpen(false); }}
+                onClick={() => { setMenuOpen(!menuOpen); closeAcct(); }}
                 className="md:hidden p-3 hover:bg-surface-elevated rounded-lg transition-colors cursor-pointer"
                 aria-label={menuOpen ? 'Close menu' : 'Open menu'}
                 aria-expanded={menuOpen}
@@ -341,7 +484,7 @@ export function Navbar() {
             </div>
 
             <nav className="flex-1 flex flex-col justify-center px-8 sm:px-12 overflow-y-auto">
-              {NAV_LINKS.map((link, i) => (
+              {navLinks.map((link, i) => (
                 <Link
                   key={link.href}
                   href={link.href}
@@ -366,7 +509,7 @@ export function Navbar() {
                   className="mt-8 transition-all duration-500"
                   style={{
                     transitionTimingFunction: EASE,
-                    transitionDelay: menuVisible ? `${120 + NAV_LINKS.length * 70}ms` : '0ms',
+                    transitionDelay: menuVisible ? `${120 + navLinks.length * 70}ms` : '0ms',
                     opacity: menuVisible ? 1 : 0,
                     transform: menuVisible ? 'translateX(0)' : 'translateX(24px)',
                   }}
@@ -399,7 +542,7 @@ export function Navbar() {
               className="px-8 sm:px-12 pb-10 shrink-0 transition-all duration-500"
               style={{
                 transitionTimingFunction: EASE,
-                transitionDelay: menuVisible ? `${190 + NAV_LINKS.length * 70}ms` : '0ms',
+                transitionDelay: menuVisible ? `${190 + navLinks.length * 70}ms` : '0ms',
                 opacity: menuVisible ? 1 : 0,
                 transform: menuVisible ? 'translateY(0)' : 'translateY(16px)',
               }}

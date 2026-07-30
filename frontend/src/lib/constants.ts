@@ -172,3 +172,17 @@ export const CREDIT_TERMS_LABELS: Record<string, string> = {
   NET30: 'Net 30',
   NET60: 'Net 60',
 };
+
+// "Net 30" on its own is a label, not information — it doesn't say when you're
+// billed or when it's due. These spell it out wherever the bare label isn't
+// enough on its own.
+export const CREDIT_TERMS_DESCRIPTIONS: Record<string, string> = {
+  PREPAID: 'Orders are paid at checkout. Credit terms are available on approval.',
+  NET15: 'Invoiced when the order ships, payable within 15 days.',
+  NET30: 'Invoiced when the order ships, payable within 30 days.',
+  NET60: 'Invoiced when the order ships, payable within 60 days.',
+};
+
+// Weakest to strongest. Used to render the ladder so an account can see where
+// it sits and what else exists, rather than just its own rung.
+export const CREDIT_TERMS_ORDER = ['PREPAID', 'NET15', 'NET30', 'NET60'] as const;
