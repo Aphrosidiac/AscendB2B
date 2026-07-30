@@ -8,6 +8,7 @@ import { getTieredUnitPrice } from '../../utils/product-pricing.js';
 import { getVariantDisplayName } from '../../utils/product-addons.js';
 import { enqueueEmail } from '../../utils/email-outbox.js';
 import { getPaginationParams, paginatedResponse } from '../../utils/pagination.js';
+import { assertProfileComplete } from '../companies/companies.controller.js';
 import { BATCH_SELLABLE_STATUSES, PUBLIC_KIT_WHERE } from '../../utils/kit-availability.js';
 
 const orderItemInputSchema = z.object({
@@ -62,7 +63,13 @@ export async function createOrder(fastify: FastifyInstance, companyId: string, b
   }
 
   const company = await fastify.prisma.company.findUnique({ where: { id: companyId } });
-  if (!company) throw { statusCode: 404, message: 'Company not found' };
+  if (!company) {
+    throw { statusCode: 404, message: 'Company not found' };
+  }
+  // Blocks ordering until the business profile is filled in. Enforced here
+  // rather than only in the checkout UI: `name` is the bill-to line on the
+  // invoice, and contactName/phone go straight into the gateway bill payload.
+  assertProfileComplete(company);
 
   const address = await fastify.prisma.companyAddress.findUnique({ where: { id: data.shippingAddressId } });
   if (!address || address.companyId !== companyId) {

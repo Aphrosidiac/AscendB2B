@@ -48,7 +48,7 @@ export function renderOrderConfirmation(
   const html = renderLayout(
     `
           ${renderBadge(badge)}
-          <h1 style="margin:16px 0 10px;font-family:Helvetica,Arial,sans-serif;font-size:26px;line-height:1.25;font-weight:700;letter-spacing:-0.02em;color:#0A0A0A;">Thanks for your order, ${escapeHtml(order.company.contactName.split(' ')[0])}</h1>
+          <h1 style="margin:16px 0 10px;font-family:Helvetica,Arial,sans-serif;font-size:26px;line-height:1.25;font-weight:700;letter-spacing:-0.02em;color:#0A0A0A;">Thanks for your order, ${escapeHtml(order.company.contactName?.split(' ')[0] ?? 'there')}</h1>
 ${renderMetaLine(order)}
 ${renderOrderSummary(order)}
 ${paymentBlock}`,

@@ -185,7 +185,7 @@ export async function adminListUnbilled(fastify: FastifyInstance, query: Record<
   if (query.companyId) return { items: withAmount };
 
   // Grouped rollup: one row per company with something waiting to be billed.
-  const byCompany = new Map<string, { company: { id: string; name: string; creditTerms: string }; itemCount: number; orderIds: Set<string>; amount: number }>();
+  const byCompany = new Map<string, { company: { id: string; name: string | null; creditTerms: string }; itemCount: number; orderIds: Set<string>; amount: number }>();
   for (const si of withAmount) {
     const c = si.shipment.order.company;
     const entry = byCompany.get(c.id) ?? { company: c, itemCount: 0, orderIds: new Set<string>(), amount: 0 };

@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Building2, Hash, User, Phone, Mail, Lock } from 'lucide-react';
+import { AtSign, Mail, Lock } from 'lucide-react';
 import { companySignup } from '@/lib/api';
 import { useCompanyAuth } from '@/hooks/useCompanyAuth';
 import { Button } from '@/components/ui/Button';
@@ -12,7 +12,7 @@ import { Input } from '@/components/ui/Input';
 import { Animate } from '@/components/ui/Animate';
 import { MolecularNetwork } from '@/components/ui/MolecularNetwork';
 
-const FIELD_ORDER = ['name', 'contactName', 'phone', 'email', 'password'] as const;
+const FIELD_ORDER = ['username', 'email', 'password'] as const;
 
 // Same shape as the checkout/admin-login forms in this codebase: manual
 // per-field validation into a fieldErrors record rather than a schema
@@ -21,11 +21,12 @@ const FIELD_ORDER = ['name', 'contactName', 'phone', 'email', 'password'] as con
 export default function SignupPage() {
   const router = useRouter();
   const { setSession } = useCompanyAuth();
+  // Signup is deliberately just identity + credentials. Company name,
+  // registration number, contact name and phone are captured afterwards by the
+  // business-profile step on /account — ordering is blocked until they're in,
+  // so nothing is lost by not asking here.
   const [form, setForm] = useState({
-    name: '',
-    taxId: '',
-    contactName: '',
-    phone: '',
+    username: '',
     email: '',
     password: '',
   });
@@ -40,9 +41,12 @@ export default function SignupPage() {
 
   const validateForm = (): Record<string, string> => {
     const errors: Record<string, string> = {};
-    if (!form.name.trim()) errors.name = 'Please enter your company name';
-    if (!form.contactName.trim()) errors.contactName = 'Please enter a contact name';
-    if (!form.phone.trim()) errors.phone = 'Please enter a phone number';
+    const username = form.username.trim();
+    if (!username) errors.username = 'Please choose a username';
+    else if (username.length < 3) errors.username = 'Username must be at least 3 characters';
+    else if (username.length > 30) errors.username = 'Username must be 30 characters or fewer';
+    // Mirrors the server's regex so a rejected handle is caught before the round trip.
+    else if (!/^[a-zA-Z0-9_-]+$/.test(username)) errors.username = 'Use only letters, numbers, hyphens and underscores';
     if (!form.email.trim()) errors.email = 'Please enter an email address';
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) errors.email = 'Please enter a valid email address';
     if (!form.password) errors.password = 'Please enter a password';
@@ -70,10 +74,7 @@ export default function SignupPage() {
     setLoading(true);
     try {
       const { token, company } = await companySignup({
-        name: form.name.trim(),
-        taxId: form.taxId.trim() || undefined,
-        contactName: form.contactName.trim(),
-        phone: form.phone.trim(),
+        username: form.username.trim(),
         email: form.email.trim(),
         password: form.password,
       });
@@ -107,17 +108,12 @@ export default function SignupPage() {
           <form onSubmit={handleSubmit} noValidate className="bg-white/95 backdrop-blur-sm rounded-2xl border border-white/10 shadow-2xl p-6 sm:p-8 space-y-5">
             <div className="text-center">
               <h2 className="font-display text-lg font-bold text-text-primary">Create a Business Account</h2>
-              <p className="text-sm text-text-muted mt-1">Sign up to see bulk pricing and place orders on trade terms.</p>
+              <p className="text-sm text-text-muted mt-1">Takes a moment. You&apos;ll add your business details next.</p>
             </div>
 
             <div className="space-y-4">
-              <Input icon={Building2} label="Company Name" id="name" value={form.name} onChange={(e) => updateField('name', e.target.value)} error={fieldErrors.name} required />
-              <Input icon={Hash} label="Business Registration No. (optional)" id="taxId" value={form.taxId} onChange={(e) => updateField('taxId', e.target.value)} error={fieldErrors.taxId} />
-              <div className="grid sm:grid-cols-2 gap-4">
-                <Input icon={User} label="Contact Name" id="contactName" value={form.contactName} onChange={(e) => updateField('contactName', e.target.value)} error={fieldErrors.contactName} required />
-                <Input icon={Phone} label="Phone Number" id="phone" type="tel" value={form.phone} onChange={(e) => updateField('phone', e.target.value)} placeholder="012-3456789" error={fieldErrors.phone} required />
-              </div>
-              <Input icon={Mail} label="Email" id="email" type="email" value={form.email} onChange={(e) => updateField('email', e.target.value)} error={fieldErrors.email} autoComplete="username" required />
+              <Input icon={AtSign} label="Username" id="username" value={form.username} onChange={(e) => updateField('username', e.target.value)} placeholder="acme-clinic" error={fieldErrors.username} autoComplete="username" required />
+              <Input icon={Mail} label="Email" id="email" type="email" value={form.email} onChange={(e) => updateField('email', e.target.value)} error={fieldErrors.email} autoComplete="email" required />
               <Input icon={Lock} label="Password" id="password" type="password" value={form.password} onChange={(e) => updateField('password', e.target.value)} error={fieldErrors.password} autoComplete="new-password" required />
             </div>
 

@@ -6,6 +6,7 @@ import { generateQuoteNumber } from '../../utils/quote-number.js';
 import { generateOrderNumber } from '../../utils/order-number.js';
 import { generateQuotationPdf } from '../../utils/quotation-pdf.js';
 import { PUBLIC_KIT_WHERE } from '../../utils/kit-availability.js';
+import { assertProfileComplete } from '../companies/companies.controller.js';
 
 const quotationItemInputSchema = z.object({
   variantId: z.string().optional(),
@@ -57,8 +58,18 @@ export async function requestQuotation(fastify: FastifyInstance, companyId: stri
     // Same public-offerability rule as createOrder — quoting a draft or
     // closed-campaign kit would only produce a quote that can't be converted.
     kitIds.length ? fastify.prisma.kit.findMany({ where: { id: { in: kitIds }, ...PUBLIC_KIT_WHERE }, select: { id: true } }) : Promise.resolve([]),
-    fastify.prisma.company.findUnique({ where: { id: companyId }, select: { contactName: true } }),
+    fastify.prisma.company.findUnique({
+      where: { id: companyId },
+      select: { name: true, contactName: true, phone: true },
+    }),
   ]);
+
+  if (!company) {
+    throw { statusCode: 404, message: 'Company not found' };
+  }
+  // Same gate as createOrder — a quotation PDF has the company name as its
+  // bill-to line, and an accepted quote converts straight into an order.
+  assertProfileComplete(company);
 
   const foundVariantIds = new Set(variants.map((v) => v.id));
   const foundKitIds = new Set(kits.map((k) => k.id));

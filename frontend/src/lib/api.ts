@@ -238,13 +238,20 @@ export const validateDiscount = (token: string, code: string, subtotal: number) 
 // ---------------------------------------------------------------------------
 
 export const companySignup = (data: {
-  name: string;
-  taxId?: string;
-  contactName: string;
-  phone: string;
+  username: string;
   email: string;
   password: string;
 }) => api.post<{ token: string; company: CompanyProfile }>('/api/v1/companies/signup', data).then((r) => r.data);
+
+/**
+ * The company's own business-profile save. Every field is optional so the
+ * profile can be completed over more than one save — the server decides when
+ * it's orderable (`profileComplete`).
+ */
+export const companyUpdateMe = (
+  token: string,
+  data: { name?: string; taxId?: string | null; contactName?: string; phone?: string }
+) => api.patch<CompanyProfile>('/api/v1/companies/me', data, authHeader(token)).then((r) => r.data);
 
 export const companyLogin = (email: string, password: string) =>
   api.post<{ token: string; company: CompanyProfile }>('/api/v1/companies/login', { email, password }).then((r) => r.data);

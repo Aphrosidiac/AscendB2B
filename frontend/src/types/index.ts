@@ -98,10 +98,6 @@ export interface AddOnVariant {
   addOnQuantity: number;
 }
 
-// A cart line is either a product variant or a kit, never both — the same
-// XOR convention the backend enforces on OrderItem/QuotationItem. Use
-// cartLineKey() (lib/cart.tsx) to identify a line rather than reaching for
-// variantId, which is absent on kit lines.
 // One SKU's quantity-break ladder, flattened for the homepage hero's pricing
 // demonstration. Chosen server-side (see pickPriceExample in app/page.tsx) as
 // whichever live SKU discounts hardest, so it never hardcodes a product.
@@ -117,6 +113,10 @@ export interface HeroPriceExample {
   tiers: { minQty: number; unitPrice: number }[];
 }
 
+// A cart line is either a product variant or a kit, never both — the same
+// XOR convention the backend enforces on OrderItem/QuotationItem. Use
+// cartLineKey() (lib/cart.tsx) to identify a line rather than reaching for
+// variantId, which is absent on kit lines.
 export interface CartItem {
   variantId?: string;
   // Set instead of variantId when this line is a kit. Kits are priced flat at
@@ -259,14 +259,23 @@ export type CreditTerms = 'PREPAID' | 'NET15' | 'NET30' | 'NET60';
 
 export interface CompanyProfile {
   id: string;
-  name: string;
+  // Chosen at signup alongside email + password. The account's handle, and the
+  // label shown wherever a company name isn't set yet.
+  username: string;
+  // Nullable: signup collects none of these. They're captured afterwards by
+  // the business-profile step (PATCH /companies/me), and ordering/quoting is
+  // blocked server-side until name + contactName + phone are all present.
+  name: string | null;
   taxId: string | null;
-  contactName: string;
-  phone: string;
+  contactName: string | null;
+  phone: string | null;
   email: string;
   emailVerifiedAt: string | null;
   creditTerms: CreditTerms;
   createdAt: string;
+  // Server-derived — the client shouldn't re-implement which fields make a
+  // profile orderable.
+  profileComplete: boolean;
 }
 
 export type CompanyAddressType = 'BILLING' | 'SHIPPING' | 'BOTH';

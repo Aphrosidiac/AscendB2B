@@ -246,6 +246,25 @@ export default function CheckoutPage() {
                 </Link>
               </div>
 
+              {/* The server refuses to create an order while the business
+                  profile is incomplete (assertProfileComplete) — surfaced here
+                  so it isn't discovered only after pressing Place Order. */}
+              {company && !company.profileComplete && (
+                <div className="mb-5 rounded-lg border border-orange-300 bg-orange-50/60 px-4 py-3.5">
+                  <p className="font-display font-semibold text-sm">Business profile incomplete</p>
+                  <p className="text-sm text-text-secondary mt-0.5">
+                    Your company name, contact name and phone number go on the invoice for this
+                    order. Add them to continue.
+                  </p>
+                  <Link
+                    href="/account"
+                    className="mt-2 inline-flex text-sm font-medium text-text-primary hover:underline"
+                  >
+                    Complete business profile &rarr;
+                  </Link>
+                </div>
+              )}
+
               {addressesLoading ? (
                 <p className="text-sm text-text-secondary">Loading addresses...</p>
               ) : addresses.length === 0 ? (
@@ -435,7 +454,12 @@ export default function CheckoutPage() {
                 <p className="text-xs text-text-muted">Final pricing (including any bulk quantity breaks) is confirmed on your order.</p>
               </div>
 
-              <Button type="submit" className="w-full" size="lg" disabled={loading || !shippingAddressId}>
+              <Button
+                type="submit"
+                className="w-full"
+                size="lg"
+                disabled={loading || !shippingAddressId || (!!company && !company.profileComplete)}
+              >
                 {loading ? 'Placing Order...' : payNow ? 'Place Order & Pay' : 'Place Order'}
               </Button>
             </div>

@@ -445,10 +445,23 @@ enum CreditTerms {
 // the approval step.
 model Company {
   id              String      @id @default(cuid())
-  name            String
+  // Collected at signup alongside email + password — the account's own handle,
+  // and the label shown wherever a company name isn't set yet. Login is still
+  // by email; this is an identifier, not a second credential.
+  username        String      @unique
+  // Nullable because signup no longer asks for it — a trade account is opened
+  // from contact details alone, and the legal entity name is captured
+  // afterwards via the business-profile step. Order and quotation creation
+  // both refuse to proceed while it's null, since it's the bill-to line on
+  // every invoice and quotation PDF.
+  name            String?
   taxId           String?
-  contactName     String
-  phone           String
+  // Also nullable, same reason as `name` — signup is email + password only.
+  // The business-profile step captures these, and ordering/quoting is blocked
+  // until all three are present (see assertProfileComplete): the payment
+  // gateway's bill payload and the receipt/quotation PDFs all require them.
+  contactName     String?
+  phone           String?
   email           String      @unique
   passwordHash    String
   emailVerifiedAt DateTime?

@@ -71,7 +71,7 @@ export default function AdminCompaniesPage() {
                 {companies.map((c) => (
                   <tr key={c.id} {...rowLink(() => router.push(`/admin/companies/${c.id}`))} className="border-b border-border last:border-0 hover:bg-surface-elevated/50 cursor-pointer">
                     <td className="px-4 py-3">
-                      <Link href={`/admin/companies/${c.id}`} className="font-medium hover:underline cursor-pointer">{c.name}</Link>
+                      <Link href={`/admin/companies/${c.id}`} className="font-medium hover:underline cursor-pointer">{c.name ?? c.username}</Link>
                       <p className="text-xs text-text-muted">{c.email}</p>
                     </td>
                     <td className="px-4 py-3 text-text-secondary text-xs">{c.contactName}<br />{c.phone}</td>

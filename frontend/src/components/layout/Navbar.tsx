@@ -233,7 +233,7 @@ export function Navbar() {
                 >
                   <span className="min-w-0 text-left">
                     <span className="block text-sm font-medium truncate">
-                      {company?.name ?? 'Account'}
+                      {company?.name ?? company?.username ?? 'Account'}
                     </span>
                     {company && (
                       <span className="block text-[11px] text-text-muted leading-none">
@@ -373,7 +373,7 @@ export function Navbar() {
                 >
                   {company && (
                     <p className="text-white/50 text-xs uppercase tracking-wider mb-3">
-                      {company.name} &middot;{' '}
+                      {company.name ?? company.username} &middot;{' '}
                       {CREDIT_TERMS_LABELS[company.creditTerms] ?? company.creditTerms}
                     </p>
                   )}

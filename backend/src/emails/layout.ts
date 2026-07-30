@@ -62,6 +62,15 @@ export function formatDate(d: Date | string): string {
 // variant + parent product, or kit; company; shippingAddress) satisfies this,
 // as does the admin preview/test-send include. A line is either a variant or
 // a kit (same mutual-exclusivity convention as OrderItem in schema.prisma).
+/**
+ * Bill-to label for a company whose business profile may be incomplete.
+ * Ordering is gated on `name` (assertProfileComplete), so a real order always
+ * has one — this only matters for admin template previews and any legacy row.
+ */
+export function billToName(company: { name: string | null; contactName: string | null }): string {
+  return company.name ?? company.contactName ?? 'Trade account';
+}
+
 export interface EmailOrderItem {
   quantity: number;
   unitPrice: number;
@@ -75,7 +84,7 @@ export interface EmailOrder {
   // Recipient/shipping details now come from Company + CompanyAddress — Order
   // dropped its own flat customerName/address/city/state/postcode fields in
   // the B2B rework.
-  company: { name: string; contactName: string; creditTerms: string };
+  company: { name: string | null; contactName: string | null; creditTerms: string };
   shippingAddress: { line1: string; line2: string | null; city: string; state: string; postcode: string };
   subtotal: number;
   shippingFee: number;
@@ -161,7 +170,7 @@ export function renderOrderSummary(order: EmailOrder): string {
           </table>
           <p style="margin:28px 0 6px;font-family:${FONT};font-size:11px;font-weight:700;letter-spacing:0.08em;color:${MUTED};">SHIPPING ADDRESS</p>
           <p style="margin:0;font-family:${FONT};font-size:13px;line-height:1.6;color:${BODY};">
-            ${escapeHtml(order.company.name)}<br>
+            ${escapeHtml(billToName(order.company))}<br>
             ${escapeHtml(order.shippingAddress.line1)}${order.shippingAddress.line2 ? `, ${escapeHtml(order.shippingAddress.line2)}` : ''}<br>
             ${escapeHtml(order.shippingAddress.city)}, ${escapeHtml(order.shippingAddress.state)} ${escapeHtml(order.shippingAddress.postcode)}
           </p>`;

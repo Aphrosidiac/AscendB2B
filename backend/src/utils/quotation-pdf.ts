@@ -24,7 +24,7 @@ interface QuotationDoc {
   createdBy: string;
   subtotal: number;
   total: number;
-  company: { name: string; contactName?: string | null; phone?: string | null; email: string };
+  company: { name: string | null; contactName?: string | null; phone?: string | null; email: string };
   items: QuotationItem[];
 }
 
@@ -128,7 +128,8 @@ export async function generateQuotationPdf(
     let y = 200;
     doc.font('Helvetica-Bold').fontSize(9).fillColor('#888888').text('PREPARED FOR', leftX, y);
     y += 16;
-    doc.font('Helvetica-Bold').fontSize(10).fillColor('#000000').text(quotation.company.name, leftX, y);
+    doc.font('Helvetica-Bold').fontSize(10).fillColor('#000000')
+      .text(quotation.company.name ?? quotation.company.contactName ?? 'Trade account', leftX, y);
     y += 14;
     doc.font('Helvetica').fontSize(9).fillColor('#444444');
     if (quotation.company.contactName) {

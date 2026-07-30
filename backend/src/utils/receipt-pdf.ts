@@ -14,7 +14,7 @@ interface ReceiptOrder {
   orderNumber: string;
   createdAt: Date | string;
   status: string;
-  company: { name: string; contactName: string; phone: string; email: string };
+  company: { name: string | null; contactName: string | null; phone: string | null; email: string };
   shippingAddress: { line1: string; line2: string | null; city: string; state: string; postcode: string };
   subtotal: number;
   shippingFee: number;
@@ -152,12 +152,13 @@ export async function generateReceiptPdf(
     let y = 200;
     doc.font('Helvetica-Bold').fontSize(9).fillColor('#888888').text('BILL TO', leftX, y);
     y += 16;
-    doc.font('Helvetica-Bold').fontSize(10).fillColor('#000000').text(order.company.name, leftX, y);
+    doc.font('Helvetica-Bold').fontSize(10).fillColor('#000000')
+      .text(order.company.name ?? order.company.contactName ?? 'Trade account', leftX, y);
     y += 14;
     doc.font('Helvetica').fontSize(9).fillColor('#444444');
-    doc.text(order.company.contactName, leftX, y);
+    if (order.company.contactName) doc.text(order.company.contactName, leftX, y);
     y += 12;
-    doc.text(order.company.phone, leftX, y);
+    if (order.company.phone) doc.text(order.company.phone, leftX, y);
     y += 12;
     doc.text(order.company.email, leftX, y);
     y += 12;

@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { signup, login, getMe } from './companies.controller.js';
+import { signup, login, getMe, updateMe } from './companies.controller.js';
 
 export default async function companyRoutes(fastify: FastifyInstance) {
   fastify.post(
@@ -20,5 +20,9 @@ export default async function companyRoutes(fastify: FastifyInstance) {
 
   fastify.get('/me', { preHandler: [fastify.authenticateCompany] }, async (request) => {
     return getMe(fastify, request.user.id);
+  });
+
+  fastify.patch('/me', { preHandler: [fastify.authenticateCompany] }, async (request) => {
+    return updateMe(fastify, request.user.id, request.body);
   });
 }

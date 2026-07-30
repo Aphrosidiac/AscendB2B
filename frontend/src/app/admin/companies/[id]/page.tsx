@@ -39,10 +39,13 @@ export default function AdminCompanyDetailPage() {
     adminGetCompany(token, params.id)
       .then((c) => {
         setCompany(c);
-        setName(c.name);
+        // All nullable since signup stopped collecting them — an account that
+        // hasn't completed its business profile yet shows empty fields here,
+        // which admin can fill in on the company's behalf.
+        setName(c.name ?? '');
         setTaxId(c.taxId ?? '');
-        setContactName(c.contactName);
-        setPhone(c.phone);
+        setContactName(c.contactName ?? '');
+        setPhone(c.phone ?? '');
         setEmail(c.email);
         setCreditTerms(c.creditTerms);
       })
@@ -98,7 +101,7 @@ export default function AdminCompanyDetailPage() {
         <ArrowLeft className="w-4 h-4" /> Back to Companies
       </Link>
 
-      <h1 className="font-display text-2xl font-bold mb-1">{company.name}</h1>
+      <h1 className="font-display text-2xl font-bold mb-1">{company.name ?? company.username}</h1>
       <p className="text-sm text-text-muted mb-6">Joined {formatDate(company.createdAt)}</p>
 
       <div className="grid md:grid-cols-3 gap-4 mb-8">

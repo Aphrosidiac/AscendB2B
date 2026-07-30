@@ -9,6 +9,7 @@ import { listCompanyInvoices } from '@/lib/api';
 import { summariseInvoices } from '@/lib/invoices';
 import { Animate, Stagger } from '@/components/ui/Animate';
 import { MolecularNetwork } from '@/components/ui/MolecularNetwork';
+import { BusinessProfileCard } from '@/components/account/BusinessProfileCard';
 import { formatDate, formatPrice, cn } from '@/lib/utils';
 
 const CREDIT_TERMS_LABELS: Record<string, string> = {
@@ -77,9 +78,10 @@ export default function AccountPage() {
                   <Building2 className="w-6 h-6" />
                 </div>
                 <div className="min-w-0">
-                  <h1 className="font-display text-2xl font-bold text-white break-words">{company.name}</h1>
+                  <h1 className="font-display text-2xl font-bold text-white break-words">{company.name ?? company.username}</h1>
                   <p className="text-sm text-white/60">
-                    {company.contactName} &middot; {company.email}
+                    {company.contactName && <>{company.contactName} &middot; </>}
+                    {company.email}
                     {company.taxId && <> &middot; Reg. {company.taxId}</>}
                   </p>
                 </div>
@@ -131,6 +133,13 @@ export default function AccountPage() {
             </Link>
           </Animate>
         )}
+
+        {/* Above the quick links deliberately: while this is incomplete the
+            server refuses to create orders or quotations, so it outranks
+            everything the links lead to. */}
+        <Animate variant="fadeUp" delay={0.05} className="mb-6">
+          <BusinessProfileCard company={company} />
+        </Animate>
 
         {/* Uniform cards now that the balance has its own home in the hero
             above — no more one card growing an extra line and throwing off
